@@ -58,7 +58,13 @@ jobs:
       - name: Ensure tsx available (optional)
         run: npx --yes tsx@4.7.0 --version
 
-      - name: Start server robustly
+      - name: Show repository tree (debug)
+        run: |
+          ls -la
+          echo "--- server dir ---"
+          ls -la server || true
+
+      - name: Start server robustly (with PID + readiness check)
         env:
           PORT: 5000
           JWT_SECRET: test_secret_for_ci_only_do_not_use_in_production
@@ -66,33 +72,49 @@ jobs:
           NODE_ENV: production
         shell: bash
         run: |
+          set -e
           export PORT=5000
-          # build nếu có thể, không fail job nếu không build được
+          # Build nếu có thể (không fail job nếu build lỗi)
           (pnpm -v && pnpm build) || true
-          # robust start: dist trước, tsx fallback sau
-          (node dist/index.js || npx tsx server/index.ts) &> server.log &
-          # đợi health lên (tối đa ~20s)
-          for i in {1..40}; do curl -sf localhost:5000/api/health && break || sleep 0.5; done
+
+          echo "Starting server…"
+          (node dist/index.js || npx tsx server/index.ts) > server.log 2>&1 &
+          SERVER_PID=$!
+          echo "PID=$SERVER_PID"
+
+          # Chờ health lên tối đa 20s; nếu process chết sớm hoặc health không lên thì in log và fail
+          READY=0
+          for i in {1..40}; do
+            if curl -sf http://localhost:5000/api/health >/dev/null; then READY=1; break; fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Server process exited prematurely. Last logs:"; tail -n 200 server.log; exit 1
+            fi
+            sleep 0.5
+          done
+          if [ "$READY" -ne 1 ]; then
+            echo "Health never became ready. Last logs:"; tail -n 200 server.log; exit 1
+          fi
+          echo "Server is up."
 
       - name: Test health endpoint performance
         shell: bash
         run: |
           # warm-up
-          for i in {1..3}; do curl -s localhost:5000/api/health >/dev/null; done
+          for i in {1..3}; do curl -s http://localhost:5000/api/health >/dev/null; done
           FAIL=0
           for i in {1..5}; do
-            T=$(curl -s -w "%{time_total}" -o /dev/null localhost:5000/api/health)
-            ms=$(python -c "import sys; print(int(float('$T')*1000))")
+            T=$(curl -s -w "%{time_total}" -o /dev/null http://localhost:5000/api/health)
+            ms=$(python -c "print(int(float('$T')*1000))")
             echo "health_ms=$ms"
-            if [ "$ms" -ge 200 ]; then FAIL=1; fi
+            [ "$ms" -lt 200 ] || FAIL=1
           done
           exit $FAIL
 
       - name: Force SQLite write & assert DB file
         shell: bash
         run: |
-          # kích ghi DB (endpoint có thể không tồn tại — không fail job)
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST localhost:5000/api/messages \
+          # kích ghi DB (endpoint có thể không tồn tại — không fail ở POST)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:5000/api/messages \
             -H "Content-Type: application/json" \
             -d '{"conversation_id":"ci-acc","cipher":"X1","nonce":"N1","ad":{"type":"text"}}' || true)
           echo "messages_post_status=$STATUS"
@@ -100,10 +122,8 @@ jobs:
           ls -lh ./data || true
           test -f ./data/nexo.db
 
-      - name: Stop server
+      - name: Print last server logs
         if: always()
-        shell: bash
         run: |
-          pkill -f "node dist/index.js" || true
-          pkill -f "tsx server/index.ts" || true
-          echo "stopped"
+          echo "---- server.log (last 200 lines) ----"
+          tail -n 200 server.log || true
