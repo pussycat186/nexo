@@ -1,0 +1,92 @@
+Operate in **SAFE FORCE MODE**. Do not fabricate outputs. Run real commands and paste raw outputs. Abort on failures. 
+
+ALLOWED CHANGES
+- Runtime (only these):
+  • package.json "scripts" (add/fix start/build without removing existing)
+  • server/db-storage.ts (ensure SQLite directory exists before opening)
+  • server/routes.ts ONLY if /api/health is doing DB calls; then add lightweight in-memory counters; otherwise leave as-is
+- Meta files (already created): README.md, .gitignore, .env.example, RUNBOOK.md, SECURITY.md, LICENSE,
+  .github/workflows/acceptance.yml, .github/pull_request_template.md, .github/ISSUE_TEMPLATE/*, .github/CODEOWNERS
+No other files may be changed, moved, or deleted. Do not touch secrets or environment.
+
+GOAL
+1) Make `pnpm start` reliable in both dev/prod.
+2) Ensure SQLite is default when DATABASE_URL is unset (auto-create ./data/).
+3) Keep /api/health < 200ms after warm-up without DB roundtrips.
+4) Prove with real runs (unset DATABASE_URL): health timings, SQLite file existence, PRAGMA integrity_check (if sqlite3 CLI available), and (optional) sth_count increase after posting 3 messages if endpoint exists.
+5) Commit only allowed files if and only if all proofs pass.
+
+STEPS (do exactly and paste outputs):
+0) Print environment:
+   - Run: `node -v && pnpm -v || npm -v`
+   - Paste output.
+
+1) FIX SCRIPTS (non-destructive):
+   - In package.json, ensure:
+     {
+       "scripts": {
+         "dev": "tsx server/index.ts",
+         "build": "tsc -p tsconfig.json || true",
+         "start": "NODE_ENV=production node dist/index.js || tsx server/index.ts",
+         "test:e2e": "node ./scripts/e2e-smoke.js || echo 'no e2e script'"
+       }
+     }
+   - If tsconfig.json missing, create minimal:
+     {
+       "compilerOptions": { "target":"ES2020","module":"CommonJS","outDir":"dist","esModuleInterop":true,"skipLibCheck":true,"resolveJsonModule":true },
+       "include":["server/**/*.ts","shared/**/*.ts"]
+     }
+   - Paste first 30 lines of package.json (showing scripts) and tsconfig.json if created.
+
+2) ENSURE SQLITE DIRECTORY:
+   - In server/db-storage.ts (or equivalent DB init), before opening SQLite at ./data/nexo.db:
+     ```
+     import fs from 'node:fs';
+     import path from 'node:path';
+     const dbPath = path.resolve('./data/nexo.db');
+     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+     ```
+   - Do NOT create the DB file yourself; just mkdir.
+   - Paste the modified snippet lines.
+
+3) HEALTH FAST PATH (only if currently using DB in /api/health):
+   - Keep/introduce an in-memory counter (incremented when messages are accepted) and return health JSON without DB roundtrip.
+   - Paste the health handler snippet (10–20 lines). If already fast, paste current handler.
+
+4) PROVE WITH REAL RUN (SQLite default):
+   - Commands to run (paste commands AND raw outputs):
+     ```
+     pkill -f node || true
+     unset DATABASE_URL
+     export PORT=5000
+     pnpm build
+     pnpm start & sleep 3
+     # warm-up
+     for i in 1 2 3; do curl -s http://localhost:5000/api/health >/dev/null; done
+     echo "--- 5 health samples ---"
+     for i in 1 2 3 4 5; do curl -s -o /dev/null -w "status:%{http_code} time:%{time_total}\n" http://localhost:5000/api/health; done
+     echo "--- data dir ---"
+     ls -lh ./data || true
+     [ -f ./data/nexo.db ] && echo "--- PRAGMA ---" && sqlite3 ./data/nexo.db "PRAGMA integrity_check;" || echo "db not created yet"
+     # optional messages smoke (only if endpoint exists)
+     for i in 1 2 3; do curl -s -o /dev/null -w "msg%d:%{http_code}\n" -X POST http://localhost:5000/api/messages -H "Content-Type: application/json" -d "{\"conversation_id\":\"ci-acc\",\"cipher\":\"X$i\",\"nonce\":\"N$i\",\"ad\":{\"type\":\"text\"}}"; done
+     curl -s http://localhost:5000/api/health
+     pkill -f node || true
+     ```
+   - If the PRAGMA check tool is not available, print that notice; the existence and non-zero size of `./data/nexo.db` is acceptable.
+
+PASS CRITERIA (must meet all; else STOP and print TODO fixes without committing):
+- Every one of the 5 health samples is < 0.2s.
+- `./data/nexo.db` exists after the run; if sqlite3 is available, PRAGMA returns “ok”.
+- `pnpm start` succeeds without “Cannot find module dist/index.js” (build fallback or tsx kicks in).
+- (If messages endpoint exists) health JSON shows a monotonic counter increased after 3 posts.
+
+COMMIT (only if pass):
+- Stage only: package.json, tsconfig.json (if added), server/db-storage.ts (and routes.ts if health snippet touched), and meta files already created.
+- Verify with `git status --porcelain` that no other paths are staged.
+- Commit message: `chore(repo): fix start scripts, ensure SQLite default (mkdir), and prove health <200ms`
+- Print final summary and the exact git push commands for the user.
+
+IMPORTANT
+- Do not modify any other runtime logic.
+- Do not echo fake timings. Always show raw command output blocks.
