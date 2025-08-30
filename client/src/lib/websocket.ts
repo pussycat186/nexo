@@ -5,6 +5,7 @@ export class WebSocketManager {
   private messageHandlers: ((message: any) => void)[] = [];
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private messageQueue: any[] = [];
 
   connect(conversationId: string, token: string) {
     this.conversationId = conversationId;
@@ -24,6 +25,12 @@ export class WebSocketManager {
     this.ws.onopen = () => {
       console.log('WebSocket connected');
       this.reconnectAttempts = 0;
+      
+      // Send any queued messages
+      while (this.messageQueue.length > 0) {
+        const msg = this.messageQueue.shift();
+        this.ws!.send(JSON.stringify(msg));
+      }
     };
 
     this.ws.onmessage = (event) => {
@@ -57,7 +64,9 @@ export class WebSocketManager {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
-      throw new Error('WebSocket not connected');
+      // Queue message for retry when reconnected
+      this.messageQueue.push(message);
+      console.warn('WebSocket not connected, message queued');
     }
   }
 

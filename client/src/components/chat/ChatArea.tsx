@@ -13,16 +13,31 @@ interface ChatAreaProps {
   onShowConversationSettings: () => void;
 }
 
+interface MessageWithAcks extends any {
+  acks?: Array<{ device_id: string; type: string; timestamp: string }>;
+}
+
 export default function ChatArea({ 
   conversation, 
   onShowSecurity, 
   onShowConversationSettings 
 }: ChatAreaProps) {
   const [messageText, setMessageText] = useState("");
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<MessageWithAcks[]>([]);
   const [sessionKey, setSessionKey] = useState<Uint8Array | null>(null);
+  const [ttl, setTTL] = useState<number | null>(null);
+  const [showTTLMenu, setShowTTLMenu] = useState(false);
+  const [readReceiptsEnabled, setReadReceiptsEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const deviceId = localStorage.getItem('nexo:device_id');
+
+  const ttlPresets = [
+    { label: 'Off', value: null },
+    { label: '1 hour', value: 3600 },
+    { label: '1 day', value: 86400 },
+    { label: '7 days', value: 604800 },
+  ];
 
   const { data: messagesData, isLoading } = useQuery({
     queryKey: ['/api/messages', conversation.id],
@@ -44,7 +59,28 @@ export default function ChatArea({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+    
+    // Send read receipts for visible messages if enabled
+    if (readReceiptsEnabled && wsManager.isConnected()) {
+      messages.forEach(msg => {
+        if (msg.sender_device !== deviceId && !msg.acks?.some(a => a.device_id === deviceId && a.type === 'read')) {
+          wsManager.sendMessage({
+            type: 'ack',
+            messageId: msg.msg_id || msg.id,
+            ackType: 'read'
+          });
+        }
+      });
+    }
+  }, [messages, readReceiptsEnabled]);
+
+  useEffect(() => {
+    // Load read receipts preference
+    const stored = localStorage.getItem('nexo:read_receipts');
+    if (stored !== null) {
+      setReadReceiptsEnabled(stored === 'true');
+    }
+  }, []);
 
   useEffect(() => {
     if (!conversation.id) return;
@@ -75,23 +111,89 @@ export default function ChatArea({
       
       wsManager.onMessage(async (envelope) => {
         try {
-          // Decrypt message if we have session key
-          if (sessionKey && envelope.cipher) {
-            const aad = new TextEncoder().encode(JSON.stringify(envelope.ad || {}));
-            const plaintext = await cryptoService.openMessage(
-              envelope.cipher.c,
-              envelope.cipher.n,
-              sessionKey,
-              aad
-            );
-            envelope.plaintext = plaintext;
+          if (envelope.type === 'ack') {
+            // Handle acknowledgment
+            setMessages(prev => prev.map(msg => {
+              if (msg.msg_id === envelope.messageId || msg.id === envelope.messageId) {
+                const acks = msg.acks || [];
+                if (!acks.some(a => a.device_id === envelope.deviceId && a.type === envelope.ackType)) {
+                  acks.push({
+                    device_id: envelope.deviceId,
+                    type: envelope.ackType,
+                    timestamp: new Date().toISOString()
+                  });
+                }
+                return { ...msg, acks };
+              }
+              return msg;
+            }));
+          } else if (envelope.type === 'message') {
+            // Handle message
+            if (sessionKey && envelope.cipher) {
+              const aad = new TextEncoder().encode(JSON.stringify(envelope.ad || {}));
+              const plaintext = await cryptoService.openMessage(
+                envelope.cipher,
+                envelope.nonce,
+                sessionKey,
+                aad
+              );
+              envelope.plaintext = plaintext;
+            }
+            
+            // Check for key rotation
+            if (envelope.rotate_key && conversation.peer_x25519) {
+              const { key } = await deviceKeys.getOrCreateSessionKey(
+                conversation.id,
+                conversation.peer_x25519
+              );
+              setSessionKey(key);
+            }
+            
+            setMessages(prev => {
+              // Check for duplicates
+              if (prev.some(m => m.msg_id === envelope.msg_id || m.id === envelope.id)) {
+                return prev;
+              }
+              return [...prev, envelope];
+            });
+            
+            // Send delivered ACK
+            if (envelope.sender_device !== deviceId) {
+              wsManager.sendMessage({
+                type: 'ack',
+                messageId: envelope.msg_id || envelope.id,
+                ackType: 'delivered'
+              });
+            }
+          } else if (envelope.type === 'edit') {
+            // Handle message edit
+            setMessages(prev => prev.map(msg => {
+              if (msg.msg_id === envelope.message_id || msg.id === envelope.message_id) {
+                return {
+                  ...msg,
+                  cipher: envelope.cipher,
+                  nonce: envelope.nonce,
+                  edited: true,
+                  edited_at: envelope.edited_at
+                };
+              }
+              return msg;
+            }));
+          } else if (envelope.type === 'delete') {
+            // Handle message deletion
+            setMessages(prev => prev.map(msg => {
+              if (msg.msg_id === envelope.message_id || msg.id === envelope.message_id) {
+                if (envelope.for_everyone) {
+                  return { ...msg, deleted: true, cipher: null, plaintext: '[Message deleted]' };
+                } else {
+                  return { ...msg, deletedForMe: [...(msg.deletedForMe || []), deviceId] };
+                }
+              }
+              return msg;
+            }).filter(msg => !msg.deletedForMe?.includes(deviceId!)));
           }
-          
-          setMessages(prev => [...prev, envelope]);
         } catch (error) {
-          console.error('Failed to decrypt message:', error);
-          envelope.plaintext = '[Failed to decrypt]';
-          setMessages(prev => [...prev, envelope]);
+          console.error('Failed to process message:', error);
         }
       });
     }
@@ -109,7 +211,21 @@ export default function ChatArea({
     if (!messageText.trim() || !sessionKey) return;
 
     try {
-      const ad = { ts: Math.floor(Date.now() / 1000), type: 'text' };
+      // Check for key rotation
+      const { key, shouldRotate } = await deviceKeys.getOrCreateSessionKey(
+        conversation.id,
+        conversation.peer_x25519
+      );
+      
+      if (shouldRotate) {
+        setSessionKey(key);
+      }
+      
+      const ad = { 
+        ts: Math.floor(Date.now() / 1000), 
+        type: 'text',
+        ttl: ttl 
+      };
       const aadBytes = new TextEncoder().encode(JSON.stringify(ad));
       
       const { cipher, nonce } = await cryptoService.sealMessage(messageText, sessionKey, aadBytes);
@@ -118,9 +234,13 @@ export default function ChatArea({
         ver: 1,
         conv_id: conversation.id,
         msg_id: crypto.randomUUID(),
-        cipher: { c: cipher, n: nonce },
+        cipher,
+        nonce,
         ad,
-        plaintext: messageText // For local display
+        ttl,
+        plaintext: messageText, // For local display
+        new_session_key: shouldRotate ? deviceKeys.getX25519PublicKey() : undefined,
+        rotate_key: shouldRotate
       };
 
       wsManager.sendMessage(envelope);
@@ -252,9 +372,49 @@ export default function ChatArea({
               />
             </div>
             <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <i className="fas fa-lock text-accent"></i>
-                <span>Messages are end-to-end encrypted</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <i className="fas fa-lock text-accent"></i>
+                  <span>E2EE</span>
+                </div>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowTTLMenu(!showTTLMenu)}
+                    className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    data-testid="button-ttl-menu"
+                  >
+                    <i className="fas fa-clock"></i>
+                    <span>TTL: {ttl ? `${ttl / 3600}h` : 'Off'}</span>
+                  </button>
+                  {showTTLMenu && (
+                    <div className="absolute bottom-full left-0 mb-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                      {ttlPresets.map(preset => (
+                        <button
+                          key={preset.label}
+                          onClick={() => {
+                            setTTL(preset.value);
+                            setShowTTLMenu(false);
+                          }}
+                          className={`block w-full text-left px-3 py-1 text-sm hover:bg-muted rounded ${ttl === preset.value ? 'bg-muted' : ''}`}
+                          data-testid={`button-ttl-${preset.label}`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setReadReceiptsEnabled(!readReceiptsEnabled);
+                    localStorage.setItem('nexo:read_receipts', (!readReceiptsEnabled).toString());
+                  }}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  data-testid="button-read-receipts"
+                >
+                  <i className={`fas fa-check-double ${readReceiptsEnabled ? 'text-accent' : ''}`}></i>
+                  <span>Read receipts</span>
+                </button>
               </div>
               <div className="flex items-center gap-1">
                 <div className={`w-2 h-2 rounded-full ${wsManager.isConnected() ? 'bg-accent' : 'bg-destructive'}`}></div>
