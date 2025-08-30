@@ -42,7 +42,7 @@ export default function ChatPage() {
     setMessages([
       {
         id: '1',
-        content: 'Welcome to Nexo Messenger! Your messages are end-to-end encrypted.',
+        content: 'Welcome to NEXO! Your messages are end-to-end encrypted.',
         sender: 'system',
         timestamp: Date.now() - 60000,
         encrypted: true,

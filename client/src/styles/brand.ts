@@ -1,5 +1,5 @@
 export const brand = {
-  name: "Nexo Messenger",
+  name: "NEXO",
   colors: {
     primary: "#2563EB",
     primaryHover: "#1E40AF",

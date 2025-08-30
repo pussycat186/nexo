@@ -37,6 +37,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // DB banner logging
+  if (process.env.DATABASE_URL) {
+    log("[DB] Using PostgreSQL database");
+  } else {
+    log("[DB] Using in-memory storage (development mode)");
+  }
+  
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

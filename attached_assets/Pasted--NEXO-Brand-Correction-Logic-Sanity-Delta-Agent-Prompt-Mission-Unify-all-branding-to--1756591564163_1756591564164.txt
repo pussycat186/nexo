@@ -1,0 +1,113 @@
+# NEXO — Brand Correction & Logic Sanity (Delta Agent Prompt)
+
+> **Mission:** Unify all branding to **“NEXO”** only. Remove any references to “Messenger” or “Everywhere”. Apply premium, minimalist, VIP‑first UX. Keep CI green and security intact (E2EE, Merkle, multi‑sig). Harden app logic, improve reliability, and deliver seamless experience across Web/PWA/Desktop/Mobile.
+>
+> **Environment:** Replit (Node 20). Run idempotently and avoid double servers. **Do not** break GitHub Actions `acceptance.yml`.
+
+---
+
+## Operate‑in‑SAFE‑MODE
+
+* Do **not** modify `.github/workflows/acceptance.yml` or server start expression `(node dist/index.js || npx --yes tsx server/index.ts)`.
+* Use **single process** only on Replit: start via `bash scripts/start.sh`; auto‑kill stray `node|tsx` before boot.
+* Commit atomically with clear messages. If a sub‑step fails, **revert that file**, continue, summarize at the end.
+* Keep all security features intact: E2EE, Merkle proofs, multi‑sig STH, crypto primitives.
+
+---
+
+## Outcomes (must deliver)
+
+1. **Brand unification**: All user‑facing text, meta, logo, manifest → **NEXO**.
+2. **PWA brand**: `manifest.json` → `name` / `short_name` = **"NEXO"**. Update icons, theme\_color, install banners.
+3. **Design tokens**: create `src/styles/brand.ts` exporting **NEXO** tokens (colors, radii, typography, shadows).
+4. **Tailwind config**: extend theme via tokens; font = **Inter**.
+5. **AppShell**: premium topbar = **NEXO**, responsive sidebar, smooth transitions with `framer-motion`.
+6. **Chat UI**: minimalist VIP polish, AttestationCard compact one‑tap verify, statuses ✓ / ✓✓ / ✓✓✔.
+7. **Admin & Audit**: enhanced dashboards, Merkle STH timeline, proof verification optimized.
+8. **PWA polish**: updated manifest, icons, service worker with cache versioning.
+9. **Performance & A11y**: Lighthouse ≥ 90; keyboard navigable; contrast compliant.
+10. **No regressions**: app green via `scripts/start.sh` + `scripts/smoke.sh` → 5×200 OK.
+
+---
+
+## Branding sweep
+
+* Replace everywhere:
+
+  * `Nexo Messenger` → **NEXO**
+  * `Nexo Everywhere` / `Everywhere` → **NEXO**
+* Scope: `client/**`, `frontend/**`, `src/**/*.tsx?`, `public/**/*.html`, `index.html`, `manifest.json`, `server/views/**`.
+* Meta `<title>` → **NEXO**.
+* Service worker cache keys → `nexo-*` neutral.
+
+---
+
+## Design System tokens
+
+```ts
+export const brand = {
+  name: "NEXO",
+  colors: {
+    primary: "#2563EB",
+    primaryHover: "#1E40AF",
+    bg: { light: "#FAFAFA", dark: "#0B0F1A" },
+    card: { light: "#FFFFFF", dark: "rgba(255,255,255,0.04)" },
+    text: { light: "#111827", dark: "#E5E7EB" },
+    muted: "#9CA3AF",
+    success: "#22C55E", warn: "#F59E0B", danger: "#EF4444"
+  },
+  radii: { xl: "16px", xxl: "24px" },
+  shadow: {
+    card: "0 10px 30px rgba(0,0,0,0.15)",
+    button: "0 2px 10px rgba(0,0,0,0.10)"
+  }
+};
+```
+
+---
+
+## Logic sanity check
+
+* **ESM imports**: Noble always with `.js` suffix (`@noble/curves/ed25519.js`, `@noble/hashes/sha256.js`).
+* **DB banner**: Log once on boot:
+
+  * `[DB] Using PostgreSQL database` OR `[DB] Using SQLite database at ./data/nexo.db`.
+* **Health endpoint**: `/api/health` must return `{ ok, db, uptime, version }`.
+* **JWT & Cosigners**: require `JWT_SECRET`; `COSIGN_SK1..3` (2‑of‑3); never log secrets.
+* **WebSocket reliability**: JWT auth, exponential reconnect, heartbeat ping/pong, offline queue flush, auto key rotation.
+* **Crypto rigor**: ed25519 signatures, x25519 ECDH → HKDF → AEAD (AES‑GCM/XChaCha20), nonce per message.
+* **Merkle proofs**: canonicalize JSON (RFC 8785) before hash; stable proof order; client verify == root.
+* **PWA caching**: app shell cached, `/api/*` network-first, versioned caches, safe SW updates.
+* **Performance budgets**: JS ≤ 250KB gz; code-split `/admin`, `/audit`; disable sourcemaps prod.
+* **A11y**: WCAG AA compliant; 44px touch targets; reduced-motion toggle.
+* **Flags**: feature flags via env; fail-closed on crypto/cosign errors.
+
+---
+
+## Validation checklist
+
+```bash
+bash scripts/start.sh
+bash scripts/smoke.sh   # expect 5× 200 OK
+```
+
+* Manifest `name` = `short_name` = **NEXO**.
+* `<title>` = **NEXO**.
+* AttestationCard verify = PASS.
+* `/admin`: STH chain visible; `/audit`: transcript proof verify OK.
+
+---
+
+## Commit examples
+
+* `feat(brand): unify all user-facing brand strings to "NEXO"`
+* `chore(pwa): manifest name/short_name NEXO + neutral cache keys`
+* `chore(crypto): enforce ESM .js imports for noble`
+* `chore(server): ensure single DB banner + health details`
+* `chore(ws): reconnect backoff + heartbeat + offline flush`
+
+---
+
+## Rollback
+
+Revert only files causing regressions; leave server logic, CI untouched.

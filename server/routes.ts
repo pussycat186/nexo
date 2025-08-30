@@ -784,7 +784,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Use cached stats to avoid DB roundtrip
     res.json({
+      ok: true,
       status: 'healthy',
+      db: process.env.DATABASE_URL ? 'postgresql' : 'memory',
+      uptime: process.uptime(),
+      version: '1.0.0',
       timestamp: Math.floor(Date.now() / 1000),
       users_count: cachedStats.users_count,
       sth_count: cachedStats.sth_count,

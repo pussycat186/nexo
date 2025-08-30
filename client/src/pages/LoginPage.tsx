@@ -39,7 +39,7 @@ export default function LoginPage() {
 
       toast({
         title: 'Welcome back!',
-        description: 'Securely connected to Nexo Messenger'
+        description: 'Securely connected to NEXO'
       });
 
       setLocation('/chat');

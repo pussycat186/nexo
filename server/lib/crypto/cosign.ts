@@ -1,5 +1,5 @@
-import { ed25519 } from '@noble/curves/ed25519';
-import { sha256 } from '@noble/hashes/sha256';
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { sha256 } from '@noble/hashes/sha256.js';
 import { randomBytes } from 'crypto';
 
 // STH (Signed Tree Head) structure
