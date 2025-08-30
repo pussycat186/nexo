@@ -1,4 +1,4 @@
-// Service Worker for Nexo Everywhere PWA
+// Service Worker for Nexo Messenger PWA
 const CACHE_NAME = 'nexo-v1';
 const urlsToCache = [
   '/',

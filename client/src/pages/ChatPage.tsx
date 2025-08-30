@@ -1,381 +1,320 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'wouter';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { useLocation, useParams } from 'wouter';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { toast } from '@/hooks/use-toast';
 import { 
-  Shield, Send, Lock, CheckCircle2, AlertCircle, 
-  Users, User, Hash, Plus, LogOut, Key, QrCode,
-  Activity, FileText, Bot
+  Send, Paperclip, Smile, Shield, Check, CheckCheck, 
+  Lock, MoreVertical, Info, FileText
 } from 'lucide-react';
-
-interface Room {
-  id: string;
-  name: string;
-  kind: 'dm' | 'group' | 'channel';
-  lastMessage?: string;
-  unread?: number;
-}
+import AttestationCard from '@/components/AttestationCard';
+import KeyHealth from '@/components/KeyHealth';
 
 interface Message {
   id: string;
-  roomId: string;
+  content: string;
   sender: string;
-  content?: string;
-  cipher?: string;
-  sig?: string;
-  hash?: string;
   timestamp: number;
+  encrypted: boolean;
+  verified: boolean;
+  delivered: boolean;
+  hash?: string;
 }
 
 export default function ChatPage() {
-  const [, setLocation] = useLocation();
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const params = useParams();
+  const roomId = params.roomId || 'general';
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
-  const [encryptionEnabled, setEncryptionEnabled] = useState(true);
-  const wsRef = useRef<WebSocket | null>(null);
+  const [isEncrypted, setIsEncrypted] = useState(true);
+  const [showAttestation, setShowAttestation] = useState(false);
+  const [showKeyHealth, setShowKeyHealth] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Initialize WebSocket connection
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setLocation('/');
-      return;
-    }
-
-    // Connect to WebSocket
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
-    
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setIsConnected(true);
-      toast({
-        title: 'Connected',
-        description: 'Secure connection established'
-      });
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      switch (data.type) {
-        case 'init':
-          loadRooms();
-          break;
-        case 'message':
-          handleIncomingMessage(data);
-          break;
-        case 'presence':
-          handlePresenceUpdate(data);
-          break;
-        case 'key_exchange':
-          handleKeyExchange(data);
-          break;
+    // Demo messages
+    setMessages([
+      {
+        id: '1',
+        content: 'Welcome to Nexo Messenger! Your messages are end-to-end encrypted.',
+        sender: 'system',
+        timestamp: Date.now() - 60000,
+        encrypted: true,
+        verified: true,
+        delivered: true
+      },
+      {
+        id: '2',
+        content: 'Hey! Thanks for using our secure messaging platform.',
+        sender: 'alice',
+        timestamp: Date.now() - 30000,
+        encrypted: true,
+        verified: true,
+        delivered: true,
+        hash: '0xabc123...'
       }
-    };
-
-    ws.onerror = () => {
-      toast({
-        title: 'Connection error',
-        description: 'Failed to connect to server',
-        variant: 'destructive'
-      });
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, [navigate]);
-
-  const loadRooms = async () => {
-    // Simulated rooms for demo
-    setRooms([
-      { id: 'general', name: 'General', kind: 'channel', lastMessage: 'Welcome to Nexo!' },
-      { id: 'team', name: 'Team Chat', kind: 'group', lastMessage: 'Latest updates', unread: 2 },
-      { id: 'alice', name: 'Alice', kind: 'dm', lastMessage: 'Hey there!' }
     ]);
-  };
 
-  const handleIncomingMessage = (msg: Message) => {
-    setMessages(prev => [...prev, msg]);
-    
-    // Auto-scroll to bottom
-    setTimeout(() => {
-      scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-  };
+    // Connect WebSocket
+    const token = localStorage.getItem('token');
+    if (token) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws?token=${token}`);
+      wsRef.current = ws;
 
-  const handlePresenceUpdate = (data: any) => {
-    // Update user presence status
-    console.log('Presence update:', data);
-  };
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'message') {
+          setMessages(prev => [...prev, {
+            id: data.id,
+            content: data.content || atob(data.cipher || ''),
+            sender: data.sender,
+            timestamp: data.timestamp,
+            encrypted: !!data.cipher,
+            verified: !!data.sig,
+            delivered: true,
+            hash: data.hash
+          }]);
+        }
+      };
 
-  const handleKeyExchange = (data: any) => {
-    // Handle E2EE key exchange
-    console.log('Key exchange:', data);
-  };
+      return () => ws.close();
+    }
+  }, [roomId]);
 
-  const sendMessage = async () => {
-    if (!messageInput.trim() || !selectedRoom || !wsRef.current) return;
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-    const message: any = {
-      type: 'message',
-      roomId: selectedRoom.id,
-      timestamp: Date.now()
+  const sendMessage = () => {
+    if (!messageInput.trim()) return;
+
+    const newMessage: Message = {
+      id: crypto.randomUUID(),
+      content: messageInput,
+      sender: 'me',
+      timestamp: Date.now(),
+      encrypted: isEncrypted,
+      verified: false,
+      delivered: false
     };
 
-    if (encryptionEnabled) {
-      // TODO: Encrypt message with recipient's public key
-      message.cipher = btoa(messageInput); // Base64 for demo
-      message.sig = 'demo_signature';
-    } else {
-      message.content = messageInput;
+    setMessages(prev => [...prev, newMessage]);
+
+    // Send via WebSocket
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'message',
+        roomId,
+        content: isEncrypted ? undefined : messageInput,
+        cipher: isEncrypted ? btoa(messageInput) : undefined
+      }));
     }
 
-    wsRef.current.send(JSON.stringify(message));
     setMessageInput('');
 
-    // Add to local messages immediately
-    handleIncomingMessage({
-      ...message,
-      id: crypto.randomUUID(),
-      sender: localStorage.getItem('userId') || 'me'
-    });
+    // Simulate delivery confirmation
+    setTimeout(() => {
+      setMessages(prev => prev.map(m => 
+        m.id === newMessage.id ? { ...m, delivered: true, verified: true } : m
+      ));
+    }, 500);
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    setLocation('/');
+  const getMessageStatus = (msg: Message) => {
+    if (!msg.delivered) return <Check className="h-3 w-3 text-gray-400" />;
+    if (!msg.verified) return <CheckCheck className="h-3 w-3 text-gray-400" />;
+    return (
+      <div className="flex items-center gap-0.5">
+        <CheckCheck className="h-3 w-3 text-blue-500" />
+        <Shield className="h-2.5 w-2.5 text-green-500" />
+      </div>
+    );
   };
 
-  const getRoomIcon = (kind: string) => {
-    switch (kind) {
-      case 'dm': return <User className="h-4 w-4" />;
-      case 'group': return <Users className="h-4 w-4" />;
-      case 'channel': return <Hash className="h-4 w-4" />;
-      default: return null;
-    }
-  };
-
-  return (
-    <div className="flex h-screen bg-background">
-      {/* Sidebar */}
-      <div className="w-64 border-r flex flex-col">
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-lg">Nexo Everywhere</h2>
-            <div className="flex gap-1">
-              {isConnected ? (
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-              ) : (
-                <AlertCircle className="h-4 w-4 text-yellow-500" />
-              )}
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="flex-1" data-testid="button-keys">
-              <Key className="h-3 w-3 mr-1" />
-              Keys
-            </Button>
-            <Button size="sm" variant="outline" className="flex-1" data-testid="button-qr">
-              <QrCode className="h-3 w-3 mr-1" />
-              QR
-            </Button>
-          </div>
-        </div>
-
-        <ScrollArea className="flex-1 p-2">
-          <div className="space-y-1">
-            {rooms.map(room => (
-              <Button
-                key={room.id}
-                variant={selectedRoom?.id === room.id ? 'secondary' : 'ghost'}
-                className="w-full justify-start"
-                onClick={() => setSelectedRoom(room)}
-                data-testid={`room-${room.id}`}
-              >
-                <div className="flex items-center gap-2 w-full">
-                  {getRoomIcon(room.kind)}
-                  <div className="flex-1 text-left">
-                    <div className="font-medium">{room.name}</div>
-                    {room.lastMessage && (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {room.lastMessage}
-                      </div>
-                    )}
-                  </div>
-                  {room.unread && (
-                    <Badge variant="default" className="ml-auto">
-                      {room.unread}
-                    </Badge>
-                  )}
-                </div>
-              </Button>
-            ))}
-          </div>
-        </ScrollArea>
-
-        <div className="p-4 border-t space-y-2">
-          <Button variant="outline" size="sm" className="w-full" data-testid="button-attestation">
-            <FileText className="h-3 w-3 mr-1" />
-            Attestation Card
-          </Button>
-          <Button variant="outline" size="sm" className="w-full" data-testid="button-health">
-            <Activity className="h-3 w-3 mr-1" />
-            Key Health
-          </Button>
-          <Button variant="outline" size="sm" className="w-full" data-testid="button-bot">
-            <Bot className="h-3 w-3 mr-1" />
-            Bot Assistant
-          </Button>
-          <Separator />
+  if (showAttestation) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-8 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-[#0B0F1A] dark:to-[#151A2A]">
+        <div className="w-full max-w-2xl">
           <Button 
             variant="ghost" 
-            size="sm" 
-            className="w-full"
-            onClick={handleLogout}
-            data-testid="button-logout"
+            onClick={() => setShowAttestation(false)}
+            className="mb-4"
           >
-            <LogOut className="h-3 w-3 mr-1" />
-            Logout
+            ← Back to chat
           </Button>
+          <AttestationCard />
+        </div>
+      </div>
+    );
+  }
+
+  if (showKeyHealth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-8 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-[#0B0F1A] dark:to-[#151A2A]">
+        <div className="w-full max-w-2xl">
+          <Button 
+            variant="ghost" 
+            onClick={() => setShowKeyHealth(false)}
+            className="mb-4"
+          >
+            ← Back to chat
+          </Button>
+          <KeyHealth />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-gradient-to-br from-gray-50 to-gray-100 dark:from-[#0B0F1A] dark:to-[#151A2A]">
+      {/* Chat Header */}
+      <div className="px-6 py-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                  {roomId[0].toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="absolute bottom-0 right-0 h-3 w-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900" />
+            </div>
+            <div>
+              <h3 className="font-semibold capitalize">{roomId}</h3>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {isEncrypted && (
+                  <>
+                    <Lock className="h-3 w-3 text-green-500" />
+                    <span>End-to-end encrypted</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAttestation(true)}
+              className="gap-1.5"
+            >
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Attestation</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowKeyHealth(true)}
+              className="gap-1.5"
+            >
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Keys</span>
+            </Button>
+            <Button variant="ghost" size="icon">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
-        {selectedRoom ? (
-          <>
-            {/* Chat Header */}
-            <div className="p-4 border-b flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Avatar>
-                  <AvatarFallback>
-                    {selectedRoom.name[0].toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="font-semibold">{selectedRoom.name}</h3>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    {encryptionEnabled ? (
-                      <>
-                        <Lock className="h-3 w-3 text-green-500" />
-                        <span>End-to-end encrypted</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="h-3 w-3 text-yellow-500" />
-                        <span>Unencrypted</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant={encryptionEnabled ? 'default' : 'outline'}
-                  onClick={() => setEncryptionEnabled(!encryptionEnabled)}
-                  data-testid="button-encryption"
-                >
-                  <Shield className="h-3 w-3 mr-1" />
-                  E2EE
-                </Button>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4">
-                {messages.filter(m => m.roomId === selectedRoom.id).map(msg => (
-                  <div 
-                    key={msg.id} 
-                    className="flex gap-3"
-                    data-testid={`message-${msg.id}`}
-                  >
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>
-                        {msg.sender === localStorage.getItem('userId') ? 'Me' : 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">
-                          {msg.sender === localStorage.getItem('userId') ? 'You' : 'User'}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(msg.timestamp).toLocaleTimeString()}
-                        </span>
-                        {msg.sig && (
-                          <Badge variant="outline" className="text-xs">
-                            <Lock className="h-2 w-2 mr-1" />
-                            Verified
-                          </Badge>
-                        )}
-                      </div>
-                      <Card className="max-w-lg">
-                        <CardContent className="p-3">
-                          {msg.cipher ? (
-                            <div className="text-sm">
-                              {atob(msg.cipher)} {/* Decode for demo */}
-                            </div>
-                          ) : (
-                            <div className="text-sm">{msg.content}</div>
-                          )}
-                        </CardContent>
-                      </Card>
+      {/* Messages */}
+      <ScrollArea className="flex-1 px-6 py-4">
+        <AnimatePresence initial={false}>
+          <div className="space-y-4 max-w-4xl mx-auto">
+            {messages.map((msg, index) => (
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
+                className={`flex gap-3 ${msg.sender === 'me' ? 'justify-end' : ''}`}
+              >
+                {msg.sender !== 'me' && (
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>
+                      {msg.sender === 'system' ? 'S' : msg.sender[0].toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                
+                <div className={`max-w-[70%] ${msg.sender === 'me' ? 'items-end' : ''}`}>
+                  <Card className={`px-4 py-3 ${
+                    msg.sender === 'me' 
+                      ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0' 
+                      : 'bg-white dark:bg-gray-800'
+                  }`}>
+                    <p className="text-sm leading-relaxed">{msg.content}</p>
+                    
+                    <div className={`flex items-center gap-2 mt-2 text-xs ${
+                      msg.sender === 'me' ? 'text-blue-100' : 'text-muted-foreground'
+                    }`}>
+                      <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                      {msg.sender === 'me' && getMessageStatus(msg)}
                       {msg.hash && (
-                        <div className="text-xs text-muted-foreground font-mono">
-                          Hash: {msg.hash.substring(0, 16)}...
-                        </div>
+                        <span className="font-mono opacity-50">{msg.hash.substring(0, 8)}</span>
                       )}
                     </div>
-                  </div>
-                ))}
-                <div ref={scrollRef} />
-              </div>
-            </ScrollArea>
-
-            {/* Message Input */}
-            <div className="p-4 border-t">
-              <div className="flex gap-2">
-                <Input
-                  placeholder={encryptionEnabled ? "Type an encrypted message..." : "Type a message..."}
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                  data-testid="input-message"
-                />
-                <Button onClick={sendMessage} data-testid="button-send">
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
-            <div className="text-center space-y-2">
-              <Shield className="h-12 w-12 mx-auto opacity-20" />
-              <p>Select a conversation to start messaging</p>
-            </div>
+                  </Card>
+                </div>
+                
+                {msg.sender === 'me' && (
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>Me</AvatarFallback>
+                  </Avatar>
+                )}
+              </motion.div>
+            ))}
+            <div ref={scrollRef} />
           </div>
-        )}
+        </AnimatePresence>
+      </ScrollArea>
+
+      {/* Message Input */}
+      <div className="px-6 py-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-t border-gray-200 dark:border-gray-800">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-2 mb-2">
+            <Badge 
+              variant={isEncrypted ? "default" : "secondary"}
+              className="gap-1 cursor-pointer"
+              onClick={() => setIsEncrypted(!isEncrypted)}
+            >
+              <Lock className="h-3 w-3" />
+              {isEncrypted ? 'Encrypted' : 'Unencrypted'}
+            </Badge>
+          </div>
+          
+          <div className="flex gap-2">
+            <Button variant="ghost" size="icon" className="shrink-0">
+              <Paperclip className="h-5 w-5" />
+            </Button>
+            <Input
+              placeholder={isEncrypted ? "Type an encrypted message..." : "Type a message..."}
+              value={messageInput}
+              onChange={(e) => setMessageInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+              className="flex-1 h-11"
+              data-testid="input-message"
+            />
+            <Button variant="ghost" size="icon" className="shrink-0">
+              <Smile className="h-5 w-5" />
+            </Button>
+            <Button 
+              onClick={sendMessage}
+              className="shrink-0 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+              data-testid="button-send"
+            >
+              <Send className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

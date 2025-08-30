@@ -1,9 +1,9 @@
 {
-  "name": "Nexo Everywhere",
+  "name": "Nexo Messenger",
   "short_name": "Nexo",
-  "description": "End-to-end encrypted secure messaging with cryptographic transparency",
-  "theme_color": "#1a1a1a",
-  "background_color": "#ffffff",
+  "description": "Secure, minimalist E2EE messenger with verifiable transparency.",
+  "theme_color": "#0B0F1A",
+  "background_color": "#FAFAFA",
   "display": "standalone",
   "orientation": "portrait",
   "scope": "/",

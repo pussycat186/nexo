@@ -5,15 +5,33 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import LoginPage from "@/pages/LoginPage";
 import ChatPage from "@/pages/ChatPage";
+import AdminPage from "@/pages/AdminPage";
+import AuditPage from "@/pages/AuditPage";
 import NotFound from "@/pages/not-found";
+import AppShell from "@/components/AppShell";
 
 function Router() {
+  const isAuthRoute = window.location.pathname === '/';
+  
+  if (isAuthRoute) {
+    return (
+      <Switch>
+        <Route path="/" component={LoginPage} />
+        <Route component={NotFound} />
+      </Switch>
+    );
+  }
+  
   return (
-    <Switch>
-      <Route path="/" component={LoginPage} />
-      <Route path="/chat" component={ChatPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <AppShell>
+      <Switch>
+        <Route path="/chat" component={ChatPage} />
+        <Route path="/chat/:roomId" component={ChatPage} />
+        <Route path="/admin" component={AdminPage} />
+        <Route path="/audit" component={AuditPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </AppShell>
   );
 }
 

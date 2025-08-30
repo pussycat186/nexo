@@ -1,0 +1,186 @@
+# Nexo — VIP UX & Branding Patch (Single‑Agent Prompt)
+
+> **Mission:** Apply a **customer‑obsessed, minimalist, premium** UX to the existing app. Remove all “Nexo Everywhere” labels. Unify branding as **“Nexo Messenger”** across web/PWA/Desktop/Mobile assets. Keep CI green, keep security features intact (E2EE, Merkle, multi‑sig). Produce delightful defaults, zero friction, and micro‑polish everywhere.
+>
+> **Environment:** Replit (Node 20). You must run idempotently and avoid double servers. Do **not** break GitHub Actions `acceptance.yml`.
+
+---
+
+## Operate‑in‑SAFE‑MODE (hard rules)
+
+* **Never** change `.github/workflows/acceptance.yml` semantics or server start expression `(node dist/index.js || npx --yes tsx server/index.ts)`.
+* **Single process only** on Replit: we start via `bash scripts/start.sh`. If any other process is up, kill it.
+* **Atomic PR‑style commits** with clear messages. If a sub‑step fails, **revert that file**, continue, and summarize at the end.
+* **No destructive renames**; use search‑and‑replace that is scoped & reviewed.
+* **Keep all security features** (E2EE, Merkle proofs, multi‑sig STH) untouched except UI presentation.
+
+---
+
+## Outcomes (you must deliver all)
+
+1. **Brand unification**: all product strings show **“Nexo Messenger”**; remove/replace all occurrences of “Nexo everywhere/Everywhere/Single‑Agent Master Prompt” from UI and meta.
+2. **PWA brand**: `manifest.json` has `name`/`short_name` = “Nexo Messenger”; icons & theme\_color updated; install banner friendly.
+3. **Design System tokens** (one source of truth): create `frontend/src/styles/brand.ts` (or `client/src/styles/brand.ts` if `frontend/` not present) exporting brand tokens (colors, radii, spacing, shadows, typography).
+4. **Tailwind config** extends brand tokens; fonts set to **Inter** (fallback `system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial`).
+5. **AppShell**: premium topbar (left logo + name; center room title; right KeyHealth mini; profile/avatar menu), responsive sidebar for rooms/channels. Smooth 60fps transitions using `framer-motion`.
+6. **Chat UI** minimalist: high readability, compact but airy; message status (sent/received/verified); **AttestationCard** compact with one‑tap verify.
+7. **Admin & Audit**: luxury polish (empty states, skeleton loaders, consistent spacing).
+8. **Microcopy**: customer‑first tone, concise; consistent toasts + tooltips for key actions.
+9. **Performance & A11y**: Lighthouse ≥ 90 on Performance/Best‑Practices/Accessibility; keyboard navigable; color contrast passes.
+10. **No regressions**: app starts green via `scripts/start.sh`, `scripts/smoke.sh` → 5× 200 OK; `/api/health` shows correct DB banner.
+
+---
+
+## Brand & Visual Language
+
+**Colors (WCAG‑aware):**
+
+* `brand.primary` = `#2563EB` (blue‑600)
+* `brand.primaryHover` = `#1E40AF` (blue‑800)
+* `brand.bg` = `#0B0F1A` (dark) & `#FAFAFA` (light)
+* `brand.card` = `rgba(255,255,255,0.04)` dark / `#FFFFFF` light
+* `brand.text` = `#E5E7EB` dark / `#111827` light
+* `brand.muted` = `#9CA3AF`
+* `brand.success` = `#22C55E` ; `brand.warn` = `#F59E0B` ; `brand.danger` = `#EF4444`
+
+**Radii & Shadows**
+
+* `radius.xl = 16px`, `radius.2xl = 24px`
+* Soft shadows: `0 10px 30px rgba(0,0,0,0.15)` for cards, `0 2px 10px rgba(0,0,0,0.10)` for buttons.
+
+**Typography**
+
+* Display: Inter 700
+* Headline: Inter 600
+* Body: Inter 400/500 (tracking‑tight)
+
+---
+
+## Step A — Safe search‑and‑replace (branding)
+
+1. Scan and replace **UI‑level** strings only (do not touch doc/canvas text files):
+
+   * Replace `Nexo Everywhere` → `Nexo Messenger`
+   * Replace `Nexo everywhere` → `Nexo Messenger`
+   * Replace `Everywhere` (when used as product subtitle) → `Messenger`
+2. Locations to scan automatically:
+
+   * `frontend/` or `client/` `/src/**/*.tsx?`, `/public/**/*.html`, `index.html`, `manifest.json`
+   * `server/views/**` if present
+   * Do **NOT** touch workflow/README headings unless they are user‑facing app text.
+3. After replacement, run `npm run build` for frontend to ensure no parse errors.
+
+---
+
+## Step B — Tokens & Tailwind
+
+1. Create `src/styles/brand.ts` under the active frontend (`frontend/src/styles/brand.ts` OR `client/src/styles/brand.ts`).
+2. Export:
+
+```ts
+export const brand = {
+  name: "Nexo Messenger",
+  colors: {
+    primary: "#2563EB",
+    primaryHover: "#1E40AF",
+    bg: { light: "#FAFAFA", dark: "#0B0F1A" },
+    card: { light: "#FFFFFF", dark: "rgba(255,255,255,0.04)" },
+    text: { light: "#111827", dark: "#E5E7EB" },
+    muted: "#9CA3AF",
+    success: "#22C55E", warn: "#F59E0B", danger: "#EF4444"
+  },
+  radii: { xl: "16px", xxl: "24px" },
+  shadow: {
+    card: "0 10px 30px rgba(0,0,0,0.15)",
+    button: "0 2px 10px rgba(0,0,0,0.10)"
+  }
+};
+```
+
+3. Tailwind: extend theme in `tailwind.config.*` with Inter font + color tokens via CSS variables. Inject `:root` variables using the tokens above in a global CSS (or via `@layer base`).
+
+---
+
+## Step C — AppShell & Navigation
+
+* Implement `AppShell` component (`src/components/AppShell.tsx`):
+
+  * **Topbar**: logo (N), “Nexo Messenger”, room title, right cluster: KeyHealth mini + avatar menu.
+  * **Sidebar** (collapsible): Rooms/DM/Channels; search; new chat button.
+  * **Content**: `Outlet` for pages.
+* Smooth slide/fade transitions with `framer-motion`. Motion duration 180–220ms, easing `[.2,.8,.2,1]`. No jank.
+* Keyboard focus rings; tab order predictable.
+
+---
+
+## Step D — Chat polish (VIP)
+
+* Message bubbles: subtle gradient on own messages; timestamps on hover; compact status glyph: ✓ (sent), ✓✓ (delivered), ✓✓✔ (verified/attested). Tooltips explain.
+* Composer: pill button, emoji attach, drag‑drop files; show **encrypted** label.
+* **AttestationCard** inline: single‑line summary (Verified • 2‑of‑3 • Merkle root short), click expands to details; copy proof.
+* Empty state: friendly card “Start a secure conversation”.
+* Errors → warm, human microcopy (“We couldn’t send that. Retrying…”) + auto‑retry.
+
+---
+
+## Step E — Admin & Audit
+
+* `/admin`: STH chain timeline (compact cards), cosigner status, quick link “Copy latest root”. Skeletons during load.
+* `/audit`: Paste proof or upload transcript `.jsonl` → verify large lists with virtualized table (e.g. `react-virtualized` if available). Show pass/fail with reasons.
+
+---
+
+## Step F — PWA polish
+
+* Update `public/manifest.json`:
+
+  * `name`: "Nexo Messenger"
+  * `short_name`: "Nexo"
+  * `description`: "Secure, minimalist E2EE messenger with verifiable transparency."
+  * `theme_color`: `#0B0F1A` (dark) / `#FAFAFA` light
+  * Generate rounded icons if missing (512/192/128) with N mark.
+* Service worker: cache app shell; network‑first for `/api/*`; offline toasts.
+
+---
+
+## Step G — Microcopy & VIP details
+
+* Confirmations: “Message secured & sent” (silent toast), “Keys healthy” status line.
+* Tooltips: plain‑language for Attestation, Key Health, QR Handoff.
+* Settings: “Concierge” link (mailto placeholder) + toggles for reduced motion, compact mode.
+
+---
+
+## Step H — QA & Budgets
+
+* Lighthouse (desktop mobile emulation): ensure ≥ 90 on P/BP/A11y.
+* Bundle budget: initial JS ≤ 250 KB gz (defer heavy libs). Code split routes `/admin`, `/audit`.
+* A11y: role/aria labels, focus visible, 44px touch targets.
+
+---
+
+## Step I — Start & Smoke (must pass)
+
+```bash
+bash scripts/start.sh
+bash scripts/smoke.sh
+```
+
+Preview `/login → /chat → /admin → /audit`. Verify no “Nexo everywhere” strings remain.
+
+---
+
+## Commit Plan
+
+* `feat(brand): unify naming to "Nexo Messenger" across UI & PWA`
+* `feat(ui): brand tokens + tailwind theme (Inter, colors, radii, shadows)`
+* `feat(shell): AppShell with premium navbar, sidebar, motion`
+* `feat(chat): VIP message polish + AttestationCard compact`
+* `feat(admin/audit): timeline + proof verify UX`
+* `chore(pwa): manifest, icons, service worker`
+
+---
+
+## Rollback
+
+If a step fails or visual regressions appear: revert only the changed file(s), leave server and CI untouched, and report diff + reason.
