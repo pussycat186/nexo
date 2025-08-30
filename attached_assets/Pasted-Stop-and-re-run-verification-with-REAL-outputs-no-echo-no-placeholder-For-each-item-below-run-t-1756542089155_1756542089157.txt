@@ -1,0 +1,52 @@
+Stop and re-run verification with REAL outputs (no echo, no placeholder).
+For each item below, run the EXACT commands and paste raw outputs and file sizes.
+If any step fails, fix and re-run until PASS.
+
+1) HEALTH (<200ms) + STH growth
+- Run 5 times:
+  curl -s -w "\nstatus:%{http_code} total_ms:%{time_total}\n" http://localhost:5000/api/health -o /dev/null
+- Send 3 messages, then:
+  curl -s http://localhost:5000/api/health | jq
+=> Show that total_ms < 0.2 and sth_count increased.
+
+2) PERSISTENCE (SQLite default, Postgres optional)
+- unset DATABASE_URL; pkill -f server || true; start server; wait 2s
+- Show logs line where it prints "Using SQLite at ./data/nexo.db"
+- ls -lh ./data/nexo.db ; sqlite3 ./data/nexo.db "PRAGMA integrity_check;"
+- Then set DATABASE_URL=postgres://… ; start server; show "Using PostgreSQL" log.
+=> Paste both runs. Also paste the exact code block (first 40 lines) selecting SQLite vs Postgres and the migration files list.
+
+3) AUTH & DEVICES (Ed25519 CR + refresh + revoke)
+- Script:
+  # register -> challenge -> sign -> verify -> access/refresh tokens
+  # list devices, revoke one; then call any API with revoked token (expect 401)
+- Paste curl commands + JSON responses + WS close code 4401 on revoked client.
+
+4) WS ACK + IDEMPOTENCY (0 duplicates)
+- Start chat; send msg id M1; drop network for 5s; resend M1 on reconnect.
+- Paste server log line showing "Duplicate prevented" and DB count for that msg_id = 1.
+
+5) DELETE / EDIT
+- Edit < 15min -> 200 with "edited": true. Edit > 15min -> 4xx "window expired".
+- Delete for everyone: show tombstone record in DB and both clients rendering "Message removed".
+- Delete for me: only local client hides; DB record intact.
+
+6) CRYPTO (X25519 + HKDF + XChaCha20, rotate/20)
+- From client log: show use of crypto_scalarmult + XChaCha20-Poly1305.
+- Send 25 messages; paste logs showing key rotation at 20 (and new key id/fingerprint).
+- Dump one stored message row (hex len of cipher > 0; no plaintext).
+
+7) UX / SETTINGS
+- Read receipts default = true (UI screenshot or state dump), toggle works.
+- TTL presets OFF by default; set TTL=5s for a message; after 5s run sweeper job; show DB row removed + UI updated.
+
+8) AUDIT / STH PROOFS
+- GET /api/sth -> paste JSON (first 5 entries).
+- Run client verify function with a real leaf/root/index -> paste "true".
+
+9) TESTS / DOCS / TAG / URLS
+- Run the e2e suite (the actual script/runner, not an echo): paste the PASS summary.
+- Provide links to RUNBOOK.md, SECURITY.md, CHANGELOG.md, and the git tag (git tag -l).
+- Provide the deployed URLs (not localhost): web, API, ws, health, and a screenshot of the app logged in.
+
+Do not summarize. Paste raw command outputs, file sizes, and screenshots.
