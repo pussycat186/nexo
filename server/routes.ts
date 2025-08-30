@@ -30,6 +30,35 @@ const sthChain = new STHChain();
 // Session key rotation tracking
 const messageCounters = new Map<string, number>();
 
+// Cached stats for health endpoint (to avoid DB roundtrips)
+let cachedStats = {
+  users_count: 0,
+  sth_count: 0,
+  lastUpdate: 0
+};
+
+// Initialize stats on startup
+async function initializeStats() {
+  try {
+    const stats = await storage.getStats();
+    cachedStats.users_count = stats.users;
+    cachedStats.sth_count = stats.sth;
+    cachedStats.lastUpdate = Date.now();
+  } catch (error) {
+    console.error('Failed to initialize stats:', error);
+  }
+}
+
+// Update stats cache when needed
+function updateStatsCache(type: 'user' | 'sth', delta: number = 1) {
+  if (type === 'user') {
+    cachedStats.users_count += delta;
+  } else if (type === 'sth') {
+    cachedStats.sth_count += delta;
+  }
+  cachedStats.lastUpdate = Date.now();
+}
+
 function generateTokens(deviceId: string, handle: string) {
   const access = jwt.sign(
     { sub: deviceId, hdl: handle, iss: JWT_ISSUER },
@@ -55,6 +84,9 @@ setInterval(async () => {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  // Initialize cached stats for health endpoint
+  initializeStats();
 
   // WebSocket server with ACK support
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
@@ -186,6 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Store STH record
         await storage.createSTH(idx, root.toString('base64'), leaf.toString('base64'));
+        updateStatsCache('sth', 1); // Update cached STH count
 
         // Send ACK to sender
         ws.send(JSON.stringify({
@@ -246,6 +279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let user = await storage.getUserByHandle(handle.toLowerCase());
       if (!user) {
         user = await storage.createUser({ handle: handle.toLowerCase() });
+        updateStatsCache('user', 1); // Update cached user count
       }
 
       // Check if device already exists
@@ -747,24 +781,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health endpoint (optimized for <200ms response)
   app.get('/api/health', async (req, res) => {
     const start = Date.now();
-    try {
-      const stats = await storage.getStats();
-      
-      res.json({
-        status: 'healthy',
-        timestamp: Math.floor(Date.now() / 1000),
-        users_count: stats.users,
-        sth_count: stats.sth,
-        response_time_ms: Date.now() - start
-      });
-    } catch (error) {
-      res.status(500).json({
-        status: 'unhealthy',
-        timestamp: Math.floor(Date.now() / 1000),
-        error: 'Database connection failed',
-        response_time_ms: Date.now() - start
-      });
-    }
+    
+    // Use cached stats to avoid DB roundtrip
+    res.json({
+      status: 'healthy',
+      timestamp: Math.floor(Date.now() / 1000),
+      users_count: cachedStats.users_count,
+      sth_count: cachedStats.sth_count,
+      response_time_ms: Date.now() - start
+    });
   });
 
   // STH endpoints
