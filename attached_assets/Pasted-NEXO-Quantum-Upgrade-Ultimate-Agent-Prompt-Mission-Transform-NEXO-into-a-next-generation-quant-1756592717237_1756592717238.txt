@@ -1,0 +1,99 @@
+NEXO — Quantum Upgrade (Ultimate Agent Prompt)
+Mission
+
+Transform NEXO into a next-generation, quantum-grade secure messenger:
+
+Beyond Telegram: multi-platform, PWA, native Desktop, native Mobile.
+
+Zero-trust architecture: E2EE, Merkle transparency, multi-sig validation, device attestation.
+
+VIP UX: hyper-minimalist, frictionless, customer-first.
+
+One Agent Prompt → a full upgrade: backend + frontend + mobile + desktop.
+
+Core Objectives
+1. Security Uncompromised 🔒
+
+End-to-End Encryption (ed25519 + x25519 + HKDF + AES-GCM/XChaCha20).
+
+Quantum-safe crypto ready (Kyber / Dilithium placeholders).
+
+Merkle transparency log + 2-of-3 cosigning on every STH.
+
+Canonical JSON (RFC 8785) → deterministic proofs.
+
+Device attestation + QR secure handoff between devices.
+
+2. Premium VIP UX 🎨
+
+Brand = NEXO everywhere, no Messenger, no Everywhere.
+
+Frictionless onboarding, 1-tap account bootstrap.
+
+AppShell topbar + KeyHealth mini + AttestationCard compact.
+
+Smooth transitions ≤180ms, framer-motion, WCAG AA compliance.
+
+Real-time status: ✓ sent, ✓✓ delivered, ✓✓✔ verified.
+
+3. Unified Multi-Platform 🌍
+
+Web/PWA: fully installable, offline-first.
+
+Mobile: scaffold Capacitor → Android/iOS APKs ready.
+
+Desktop: scaffold Tauri → Mac/Windows/Linux native apps.
+
+Shared codebase, one Agent pass.
+
+4. AI-Powered Features 🤖 (exclusive)
+
+Smart Summaries: generate encrypted conversation digests locally.
+
+Attested Search: local, privacy-preserving fuzzy search across chats.
+
+Secure Agents: allow plugins to run sandboxed inside client, verifying proofs.
+
+5. Performance & Observability ⚡
+
+First load <250KB gz, code-split /admin & /audit.
+
+Service worker: versioned caches, instant updates.
+
+/metrics dashboard: latency, uptime, WS reconnect count, verified message rate.
+
+Privacy-first telemetry: opt-in only, no message content collected.
+
+Definition of Done ✅
+
+bash scripts/start.sh → server healthy, DB banner printed once.
+
+bash scripts/smoke.sh → 5× 200 OK, <5ms latency.
+
+Manifest: "name"="short_name"="NEXO".
+
+Title/AppShell topbar = NEXO everywhere.
+
+Chat realtime: AttestationCard verified, Merkle proofs match root.
+
+Mobile & Desktop builds scaffolded successfully.
+
+Lighthouse score ≥90 (Perf, A11y, Best Practices, PWA).
+
+One-Shot Agent Prompt
+
+“Upgrade NEXO to the Quantum Gold Standard”:
+
+Unify brand to NEXO across all platforms.
+
+Harden backend security (E2EE, Merkle, cosigners, WS reliability).
+
+Polish VIP UX: AppShell, AttestationCard compact, KeyHealth mini, smooth motion.
+
+Scaffold mobile builds via Capacitor + PWA optimization.
+
+Scaffold desktop builds via Tauri native packaging.
+
+Add /metrics dashboard + safe, opt-in telemetry.
+
+Validate via smoke tests, health endpoint, Lighthouse ≥90.

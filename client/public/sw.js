@@ -1,67 +1,78 @@
-// Service Worker for NEXO PWA
-const CACHE_VERSION = 'v2';
-const CACHE_NAME = `nexo-${CACHE_VERSION}`;
-const urlsToCache = [
+// NEXO Service Worker - Premium PWA with versioned caching
+const CACHE_VERSION = 'v1.0.0';
+const CACHE_NAME = `nexo-cache-${CACHE_VERSION}`;
+const API_CACHE_NAME = `nexo-api-${CACHE_VERSION}`;
+
+// Assets to cache on install
+const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/assets/index.css',
-  '/assets/index.js'
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
-// Install event - cache resources
+// Install event - cache static assets
 self.addEventListener('install', event => {
+  console.log('[SW] Installing service worker', CACHE_VERSION);
+  
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('[SW] Caching resources');
-        return cache.addAll(urlsToCache);
-      })
+    caches.open(CACHE_NAME).then(cache => {
+      console.log('[SW] Caching static assets');
+      return cache.addAll(STATIC_ASSETS);
+    }).then(() => {
+      self.skipWaiting(); // Activate immediately
+    })
   );
-  self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean old caches
 self.addEventListener('activate', event => {
+  console.log('[SW] Activating service worker', CACHE_VERSION);
+  
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('[SW] Removing old cache:', cacheName);
+          if (cacheName !== CACHE_NAME && cacheName !== API_CACHE_NAME) {
+            console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      return self.clients.claim(); // Take control immediately
     })
   );
-  self.clients.claim();
 });
 
-// Fetch event - serve from cache first, then network
+// Fetch event - intelligent caching strategy
 self.addEventListener('fetch', event => {
+  const { request } = event;
+  const url = new URL(request.url);
+
   // Skip WebSocket requests
-  if (event.request.url.includes('/ws')) {
+  if (url.pathname.includes('/ws')) {
     return;
   }
 
-  // Network-first for API requests with offline fallback
-  if (event.request.url.includes('/api/')) {
+  // Network-first for API calls
+  if (url.pathname.startsWith('/api/')) {
     event.respondWith(
-      fetch(event.request)
+      fetch(request)
         .then(response => {
-          // Cache successful responses
+          // Cache successful API responses
           if (response.ok) {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then(cache => {
-              cache.put(event.request, responseClone);
+            const responseToCache = response.clone();
+            caches.open(API_CACHE_NAME).then(cache => {
+              cache.put(request, responseToCache);
             });
           }
           return response;
         })
         .catch(() => {
-          // Try cache for offline API requests
-          return caches.match(event.request).then(cachedResponse => {
+          // Fallback to cache if network fails
+          return caches.match(request).then(cachedResponse => {
             if (cachedResponse) {
               return cachedResponse;
             }
@@ -79,70 +90,128 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first strategy for other resources
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request)
-          .then(response => {
-            // Check if valid response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-
-            // Clone the response
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                cache.put(event.request, responseToCache);
+  // Cache-first for static assets
+  if (request.method === 'GET') {
+    event.respondWith(
+      caches.match(request).then(cachedResponse => {
+        if (cachedResponse) {
+          // Update cache in background
+          fetch(request).then(response => {
+            if (response.ok) {
+              caches.open(CACHE_NAME).then(cache => {
+                cache.put(request, response.clone());
               });
-
-            return response;
-          });
-      })
-      .catch(() => {
-        // Return offline page for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
+            }
+          }).catch(() => {});
+          return cachedResponse;
         }
+
+        // Not in cache, fetch from network
+        return fetch(request).then(response => {
+          // Check if valid response
+          if (!response || response.status !== 200 || response.type !== 'basic') {
+            return response;
+          }
+
+          // Clone and cache the response
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(request, responseToCache);
+          });
+
+          return response;
+        }).catch(() => {
+          // Return offline page for navigation requests
+          if (request.mode === 'navigate') {
+            return caches.match('/index.html');
+          }
+        });
       })
-  );
+    );
+  }
 });
 
 // Background sync for offline messages
 self.addEventListener('sync', event => {
-  if (event.tag === 'send-messages') {
-    event.waitUntil(sendQueuedMessages());
+  if (event.tag === 'sync-messages') {
+    console.log('[SW] Syncing offline messages');
+    event.waitUntil(syncOfflineMessages());
   }
 });
 
-async function sendQueuedMessages() {
-  // Get queued messages from IndexedDB
-  const db = await openDB();
-  const tx = db.transaction('queued_messages', 'readonly');
-  const messages = await tx.objectStore('queued_messages').getAll();
+// Push notifications
+self.addEventListener('push', event => {
+  const data = event.data ? event.data.json() : {};
+  const title = data.title || 'NEXO';
+  const options = {
+    body: data.body || 'New secure message',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    vibrate: [200, 100, 200],
+    data: data,
+    requireInteraction: false,
+    silent: false,
+    tag: 'nexo-notification',
+    renotify: true
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
+// Notification click handler
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
   
-  for (const msg of messages) {
-    try {
-      await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(msg)
-      });
-      
-      // Remove from queue after successful send
-      const deleteTx = db.transaction('queued_messages', 'readwrite');
-      await deleteTx.objectStore('queued_messages').delete(msg.id);
-    } catch (error) {
-      console.error('[SW] Failed to send queued message:', error);
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then(clientList => {
+      // Focus existing window or open new one
+      for (const client of clientList) {
+        if (client.url === '/' && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
+    })
+  );
+});
+
+// Sync offline messages with IndexedDB
+async function syncOfflineMessages() {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('queued_messages', 'readonly');
+    const messages = await tx.objectStore('queued_messages').getAll();
+    
+    for (const msg of messages) {
+      try {
+        const response = await fetch('/api/messages', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': msg.auth
+          },
+          body: JSON.stringify(msg.data)
+        });
+        
+        if (response.ok) {
+          // Remove from queue after successful send
+          const deleteTx = db.transaction('queued_messages', 'readwrite');
+          await deleteTx.objectStore('queued_messages').delete(msg.id);
+        }
+      } catch (error) {
+        console.error('[SW] Failed to send queued message:', error);
+      }
     }
+  } catch (error) {
+    console.error('[SW] Sync failed:', error);
   }
 }
 
+// IndexedDB helper
 function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('nexo-db', 1);
@@ -158,3 +227,20 @@ function openDB() {
     };
   });
 }
+
+// Performance optimization message handler
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  
+  if (event.data && event.data.type === 'CLEAR_CACHE') {
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => caches.delete(cacheName))
+      );
+    }).then(() => {
+      event.ports[0].postMessage({ cleared: true });
+    });
+  }
+});

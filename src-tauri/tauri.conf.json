@@ -1,0 +1,113 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:5000",
+    "distDir": "../client/dist"
+  },
+  "package": {
+    "productName": "NEXO",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "open": false
+      },
+      "window": {
+        "all": true
+      },
+      "notification": {
+        "all": true
+      },
+      "clipboard": {
+        "all": true,
+        "writeText": true,
+        "readText": true
+      },
+      "globalShortcut": {
+        "all": false
+      },
+      "os": {
+        "all": false
+      },
+      "fs": {
+        "all": false,
+        "scope": ["$APPDATA/*", "$APPCACHE/*"]
+      },
+      "http": {
+        "all": false,
+        "request": true,
+        "scope": ["https://**", "http://localhost:*"]
+      },
+      "protocol": {
+        "asset": true,
+        "assetScope": ["**"]
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "Communication",
+      "copyright": "© 2025 NEXO",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "identifier": "app.nexo.secure",
+      "longDescription": "Premium secure messaging with end-to-end encryption and quantum-safe crypto",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "minimumSystemVersion": "10.15",
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "Secure messaging",
+      "targets": ["app", "deb", "msi", "dmg"],
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": "",
+        "webviewInstallMode": {
+          "type": "embedBootstrapper"
+        },
+        "wix": {
+          "language": "en-US"
+        }
+      }
+    },
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws://localhost:* wss://localhost:* http://localhost:* https://localhost:*"
+    },
+    "updater": {
+      "active": false
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 800,
+        "resizable": true,
+        "title": "NEXO",
+        "width": 1200,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "skipTaskbar": false,
+        "fileDropEnabled": true,
+        "theme": "Dark"
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ import {
   generateSecureToken,
   STHChain
 } from "./crypto";
+import { registerMetricsRoutes, Telemetry, PerformanceTracker } from "./routes/metrics";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 const JWT_ISSUER = "nexo";
@@ -87,6 +88,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Initialize cached stats for health endpoint
   initializeStats();
+  
+  // Register metrics routes
+  registerMetricsRoutes(app);
 
   // WebSocket server with ACK support
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });

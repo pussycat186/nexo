@@ -7,6 +7,7 @@ import LoginPage from "@/pages/LoginPage";
 import ChatPage from "@/pages/ChatPage";
 import AdminPage from "@/pages/AdminPage";
 import AuditPage from "@/pages/AuditPage";
+import MetricsPage from "@/pages/MetricsPage";
 import NotFound from "@/pages/not-found";
 import AppShell from "@/components/AppShell";
 
@@ -29,6 +30,7 @@ function Router() {
         <Route path="/chat/:roomId" component={ChatPage} />
         <Route path="/admin" component={AdminPage} />
         <Route path="/audit" component={AuditPage} />
+        <Route path="/metrics" component={MetricsPage} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>
