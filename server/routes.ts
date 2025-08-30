@@ -108,6 +108,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const deviceId = payload.sub;
+    let isAlive = true;
+
+    // Heartbeat mechanism
+    const heartbeat = setInterval(() => {
+      if (!isAlive) {
+        ws.terminate();
+        clearInterval(heartbeat);
+        return;
+      }
+      isAlive = false;
+      ws.ping();
+    }, 30000); // Ping every 30 seconds
+
+    ws.on('pong', () => {
+      isAlive = true;
+    });
 
     // Add to conversation room with device tracking
     if (!wsConnections.has(convId)) {
@@ -129,6 +145,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     ws.on('message', async (data) => {
+      // Handle ping messages
+      if (data.toString() === 'ping') {
+        ws.send('pong');
+        return;
+      }
+      
       try {
         const envelope = JSON.parse(data.toString());
         
@@ -254,6 +276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     ws.on('close', () => {
+      clearInterval(heartbeat);
       const connections = wsConnections.get(convId);
       if (connections) {
         connections.delete(deviceId);
@@ -261,6 +284,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           wsConnections.delete(convId);
         }
       }
+    });
+
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      clearInterval(heartbeat);
     });
   });
 

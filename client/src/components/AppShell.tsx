@@ -20,6 +20,7 @@ import {
   Activity, Lock, Zap
 } from 'lucide-react';
 import { brand } from '@/styles/brand';
+import KeyHealthMini from '@/components/KeyHealthMini';
 
 interface Room {
   id: string;
@@ -197,14 +198,7 @@ export default function AppShell({ children }: AppShellProps) {
           {/* Right Section */}
           <div className="flex items-center gap-3">
             {/* Key Health Indicator */}
-            <motion.div 
-              whileHover={{ scale: 1.05 }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full cursor-pointer"
-            >
-              <Activity className={`h-4 w-4 ${getKeyHealthColor()}`} />
-              <span className="text-xs font-medium">{keyHealthScore}%</span>
-              <Lock className="h-3 w-3 text-muted-foreground" />
-            </motion.div>
+            <KeyHealthMini />
 
             {/* Notifications */}
             <Button variant="ghost" size="icon" className="h-9 w-9 relative">

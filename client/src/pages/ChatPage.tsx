@@ -128,10 +128,18 @@ export default function ChatPage() {
   };
 
   const getMessageStatus = (msg: Message) => {
-    if (!msg.delivered) return <Check className="h-3 w-3 text-gray-400" />;
-    if (!msg.verified) return <CheckCheck className="h-3 w-3 text-gray-400" />;
+    if (!msg.delivered) return (
+      <div className="flex items-center gap-0.5" title="Sent">
+        <Check className="h-3 w-3 text-gray-400" />
+      </div>
+    );
+    if (!msg.verified) return (
+      <div className="flex items-center gap-0.5" title="Delivered">
+        <CheckCheck className="h-3 w-3 text-gray-400" />
+      </div>
+    );
     return (
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5" title="Verified">
         <CheckCheck className="h-3 w-3 text-blue-500" />
         <Shield className="h-2.5 w-2.5 text-green-500" />
       </div>

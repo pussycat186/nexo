@@ -1,5 +1,6 @@
 // Service Worker for NEXO PWA
-const CACHE_NAME = 'nexo-v1';
+const CACHE_VERSION = 'v2';
+const CACHE_NAME = `nexo-${CACHE_VERSION}`;
 const urlsToCache = [
   '/',
   '/index.html',
@@ -44,19 +45,35 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Skip API requests (always fetch from network)
+  // Network-first for API requests with offline fallback
   if (event.request.url.includes('/api/')) {
     event.respondWith(
       fetch(event.request)
+        .then(response => {
+          // Cache successful responses
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return response;
+        })
         .catch(() => {
-          // Return offline response for API failures
-          return new Response(
-            JSON.stringify({ error: 'Offline' }),
-            {
-              headers: { 'Content-Type': 'application/json' },
-              status: 503
+          // Try cache for offline API requests
+          return caches.match(event.request).then(cachedResponse => {
+            if (cachedResponse) {
+              return cachedResponse;
             }
-          );
+            // Return offline response
+            return new Response(
+              JSON.stringify({ error: 'Offline', cached: false }),
+              {
+                headers: { 'Content-Type': 'application/json' },
+                status: 503
+              }
+            );
+          });
         })
     );
     return;

@@ -1,0 +1,219 @@
+NEXO — VIP UX & Security Finishing Kit (One-Shot Agent Prompt)
+Mission
+
+Finalize NEXO to meet the Gold Standard:
+
+Unified branding → NEXO everywhere (no “Messenger” / “Everywhere”).
+
+Premium, minimalist, VIP-first UI/UX.
+
+Enhance security, performance, and stability: E2EE, Merkle proofs, multi-sig STH, reliable WS connections.
+
+Keep CI green and run in SAFE MODE on Replit.
+
+This is a single, idempotent prompt that must not break existing pipelines.
+
+SAFE MODE (must follow)
+
+Do not modify .github/workflows/acceptance.yml or the start expression (node dist/index.js || npx --yes tsx server/index.ts).
+
+Always ensure single process on Replit:
+
+Start via bash scripts/start.sh.
+
+Kill any stray node|tsx processes before boot.
+
+Use atomic commits with clear messages.
+
+If any sub-step fails → revert that file only, continue, and summarize at the end.
+
+Tasks to Complete
+A) Brand Sweep → NEXO
+
+Replace all UI-level strings:
+
+Nexo Messenger, Nexo Everywhere, Everywhere (used as subtitle) → NEXO.
+
+Update everywhere:
+
+<title> = NEXO.
+
+manifest.json: "name": "NEXO", "short_name": "NEXO".
+
+Service Worker cache key prefix → nexo-*.
+
+AppShell topbar → NEXO logo + label.
+
+B) Design System & Tailwind
+
+Create/update src/styles/brand.ts:
+
+export const brand = {
+  name: "NEXO",
+  colors: {
+    primary: "#2563EB",
+    primaryHover: "#1E40AF",
+    bg: { light: "#FAFAFA", dark: "#0B0F1A" },
+    card: { light: "#FFFFFF", dark: "rgba(255,255,255,0.04)" },
+    text: { light: "#111827", dark: "#E5E7EB" },
+    muted: "#9CA3AF",
+    success: "#22C55E", warn: "#F59E0B", danger: "#EF4444"
+  },
+  radii: { xl: "16px", xxl: "24px" },
+  shadow: {
+    card: "0 10px 30px rgba(0,0,0,0.15)",
+    button: "0 2px 10px rgba(0,0,0,0.10)"
+  }
+};
+
+
+Tailwind:
+
+Extend tokens.
+
+Set font to Inter.
+
+Implement light/dark modes via CSS variables.
+
+C) Premium AppShell
+
+Topbar: logo + NEXO, centered room title, right side = KeyHealth mini + avatar menu.
+
+Sidebar: collapsible, responsive, search + “New Chat” button.
+
+Smooth framer-motion transitions: 180-220ms, easing [.2,.8,.2,1].
+
+Respect prefers-reduced-motion for accessibility.
+
+D) Chat Experience Polish
+
+Message bubbles: compact, timestamp on hover.
+
+Status icons: ✓ sent, ✓✓ delivered, ✓✓✔ verified.
+
+Composer: drag-and-drop file uploads, “encrypted” badge.
+
+AttestationCard Compact:
+
+Single-line summary: Verified • 2-of-3 • root: abcd…1234.
+
+Click to expand details + Copy Proof button.
+
+E) Admin & Audit Enhancements
+
+Admin Page:
+
+STH timeline, cosigner status, skeleton loaders.
+
+Audit Page:
+
+Proof & transcript verification.
+
+Virtualized tables for large data sets.
+
+Clear pass/fail states with detailed reasons.
+
+F) Logic Hardening
+
+Crypto imports: always use ESM .js suffixes:
+@noble/curves/ed25519.js, @noble/hashes/sha256.js.
+
+DB Banner:
+
+Log exactly once on startup:
+
+[DB] Using PostgreSQL database
+
+
+or:
+
+[DB] Using SQLite database at ./data/nexo.db
+
+
+Health Endpoint:
+
+/api/health must return:
+
+{ "ok": true, "db": "postgres", "uptime": 1.23, "version": "1.0.0" }
+
+
+WebSocket Reliability:
+
+JWT auth on connect.
+
+Exponential reconnect backoff.
+
+Heartbeat ping/pong.
+
+Offline queue flushing + key rotation.
+
+Merkle Proofs:
+
+Canonicalize JSON via RFC 8785.
+
+Deterministic proof ordering.
+
+Client verification must match server root.
+
+PWA Caching:
+
+App-shell cached.
+
+/api/* = network-first.
+
+Versioned caches.
+
+Safe service worker updates.
+
+Performance Budgets:
+
+First load ≤ 250KB gz.
+
+Code-split /admin & /audit.
+
+Disable sourcemaps in production.
+
+Accessibility (A11y):
+
+WCAG AA contrast.
+
+44px minimum touch targets.
+
+Focus rings visible.
+
+Reduced-motion toggle support.
+
+G) Final Validation
+bash scripts/start.sh
+bash scripts/smoke.sh   # expect 5× 200 OK
+
+
+AppShell topbar/title = NEXO.
+
+manifest.json: "name" = "short_name" = "NEXO".
+
+AttestationCard verify PASS.
+
+/admin: STH chain increases as messages arrive.
+
+/audit: transcript verification PASS.
+
+Lighthouse ≥ 90 on Performance, Best-Practices, Accessibility.
+
+Suggested Commit Messages
+
+feat(brand): unify brand to "NEXO" across UI, PWA, meta
+
+feat(ui): VIP AppShell + chat polish + AttestationCard compact
+
+feat(admin/audit): timeline + proof verification UX
+
+chore(crypto): enforce noble ESM .js imports
+
+chore(server): single DB banner + /api/health details
+
+chore(pwa): versioned caches + safe SW updates
+
+chore(ws): reconnect backoff + heartbeat + offline flush
+
+perf(a11y): code-split + budgets + WCAG AA compliance
