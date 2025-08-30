@@ -1,13 +1,37 @@
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
+import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
 import { neon } from "@neondatabase/serverless";
+import Database from "better-sqlite3";
 import { eq, and, or, gt, desc, sql } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import type { IStorage } from "./storage";
 import { randomUUID } from "crypto";
+import { existsSync, mkdirSync } from "fs";
+import { dirname } from "path";
 
-const connectionString = process.env.DATABASE_URL!;
-const queryClient = neon(connectionString);
-const db = drizzle(queryClient, { schema });
+// Default to SQLite if DATABASE_URL is not set
+let db: any;
+
+if (process.env.DATABASE_URL) {
+  console.log('[DB] Using PostgreSQL database');
+  const queryClient = neon(process.env.DATABASE_URL);
+  db = drizzleNeon(queryClient, { schema });
+} else {
+  console.log('[DB] Using SQLite database at ./data/nexo.db');
+  
+  // Ensure data directory exists
+  const dbPath = './data/nexo.db';
+  const dataDir = dirname(dbPath);
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true });
+  }
+  
+  const sqlite = new Database(dbPath);
+  db = drizzleSqlite(sqlite, { schema });
+  
+  // Enable foreign keys in SQLite
+  sqlite.exec('PRAGMA foreign_keys = ON');
+}
 
 export class PostgreSQLStorage implements IStorage {
   // Users
