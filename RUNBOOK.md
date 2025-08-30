@@ -1,91 +1,145 @@
 # Nexo v2 - Production Runbook
 
-## Deployment Guide
+## Starting with SQLite (Default)
 
-### Prerequisites
-- Node.js 20+ and npm 10+
-- PostgreSQL 14+ database
-- SSL certificate for HTTPS
+When `DATABASE_URL` is not set, the application automatically uses SQLite:
 
-### Environment Variables
 ```bash
-# Required
+# No DATABASE_URL needed - SQLite is the default
+npm run dev  # Development
+npm start    # Production
+```
+
+The SQLite database will be automatically created at `./data/nexo.db` on first run.
+
+## Environment Variables
+
+```bash
+# Server Configuration
+PORT=5000                    # Server port (default: 5000)
+JWT_SECRET=change_me         # JWT signing secret (required)
+JWT_ISSUER=nexo             # JWT issuer identifier (default: nexo)
+
+# Optional - PostgreSQL (if not set, uses SQLite)
 DATABASE_URL=postgresql://user:pass@host:5432/nexo_db
-JWT_SECRET=your-secure-random-secret-min-32-chars
-JWT_ISSUER=nexo
-
-# Optional
-ACCESS_TTL_MIN=15
-REFRESH_TTL_DAYS=7
 ```
 
-### Deployment Steps
+## Health Check
 
-1. **Clone and Install**
+Monitor the health endpoint to ensure the service is running:
+
 ```bash
-git clone <repository>
-cd nexo-v2
-npm install
+curl -s -w "\\nResponse time: %{time_total}s\\n" http://localhost:5000/api/health
 ```
 
-2. **Database Setup**
+Expected:
+- Status: 200 OK
+- Response time: < 200ms (after warm-up)
+- Response includes: `status`, `timestamp`, `users_count`, `sth_count`
+
+## Troubleshooting
+
+### Health Response Time > 200ms
+
+**Symptoms**: Health endpoint takes longer than 200ms to respond
+
+**Solutions**:
+1. **Cold start**: First few requests may be slow. Warm up with 3-5 requests.
+2. **Database latency**: Check database connection and performance.
+3. **Server load**: Monitor CPU and memory usage.
+4. **Network**: Verify no proxy or firewall delays.
+
+**Debug steps**:
 ```bash
-npm run db:push --force
+# Measure exact timing
+for i in {1..5}; do
+  curl -s -o /dev/null -w "Attempt $i: %{time_total}s\\n" http://localhost:5000/api/health
+  sleep 1
+done
 ```
 
-3. **Build Application**
+### WebSocket Duplicate Messages
+
+**Symptoms**: Same message appears multiple times in the database
+
+**Root causes**:
+1. Missing ACK from server causing client retry
+2. Network interruption during message send
+3. Client reconnection without tracking sent messages
+
+**Solutions**:
+1. **Verify idempotency**: Check that message IDs are unique UUIDs
+2. **Check ACK mechanism**: Ensure server sends ACK for each message
+3. **Database constraint**: Verify unique constraint on message_id column
+
+**Debug steps**:
 ```bash
-npm run build
+# Check for duplicates in database
+sqlite3 ./data/nexo.db "SELECT message_id, COUNT(*) FROM messages GROUP BY message_id HAVING COUNT(*) > 1;"
+
+# Monitor WebSocket traffic
+wscat -c ws://localhost:5000/ws -H "Authorization: Bearer <token>"
 ```
 
-4. **Start Production Server**
+### Common Issues
+
+#### Port Already in Use
 ```bash
-NODE_ENV=production npm start
+# Find process using port 5000
+lsof -i :5000
+# Kill the process
+kill -9 <PID>
 ```
 
-### Health Monitoring
-- Health endpoint: `GET /api/health`
-- Expected response time: <200ms
-- Monitors: users_count, sth_count, database connectivity
+#### SQLite Database Locked
+```bash
+# Check for lock file
+ls -la ./data/nexo.db*
+# Remove stale lock if present
+rm ./data/nexo.db-journal
+```
 
-### Backup Strategy
-- Database: Daily automated PostgreSQL backups
-- STH chain: Export via `/api/sth` endpoint weekly
-- User data: GDPR-compliant export via settings
+#### JWT Token Expired
+- Tokens expire after 1 hour
+- Client should refresh before expiry
+- Check JWT_SECRET is consistent across restarts
 
-### Troubleshooting
+#### WebSocket 4401 Unauthorized
+- Verify JWT token is valid
+- Check Authorization header format: `Bearer <token>`
+- Ensure token hasn't expired
 
-#### WebSocket Connection Issues
-- Check firewall allows WS/WSS on port 5000
-- Verify SSL certificate is valid
-- Check client network allows WebSocket connections
+## Performance Tuning
 
-#### Database Connection Errors
-- Verify DATABASE_URL is correct
-- Check PostgreSQL is running and accessible
-- Ensure connection pool limits aren't exceeded
+### SQLite Optimization
+```sql
+-- Run these pragmas for better performance
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA cache_size = -2000;  -- 2MB cache
+PRAGMA temp_store = MEMORY;
+```
 
-#### High Memory Usage
-- Monitor STH chain size (cleanup old entries monthly)
-- Check for WebSocket connection leaks
-- Review message retention policies
+### PostgreSQL Migration
+If you need to migrate from SQLite to PostgreSQL:
+1. Export data from SQLite
+2. Set DATABASE_URL environment variable
+3. Run `npm run db:push`
+4. Import data to PostgreSQL
 
-### Security Checklist
-- [ ] JWT_SECRET is unique and secure
-- [ ] HTTPS/WSS enforced in production
-- [ ] Rate limiting configured
-- [ ] CORS properly configured
-- [ ] Database credentials secured
-- [ ] Regular security updates applied
+## Monitoring Checklist
 
-### Performance Tuning
-- Database: Index on messages.conversation_id, messages.timestamp
-- WebSocket: Limit concurrent connections per user
-- STH: Implement periodic cleanup for entries >30 days
+- [ ] Health endpoint responds < 200ms
+- [ ] No duplicate messages in database
+- [ ] WebSocket connections stable
+- [ ] STH chain index incrementing
+- [ ] JWT tokens refreshing properly
+- [ ] Rate limiting working (100 req/min)
 
-### Rollback Procedure
-1. Stop application
-2. Restore database from backup
-3. Deploy previous version
-4. Verify health endpoint
-5. Monitor for 15 minutes
+## Security Reminders
+
+- Always use HTTPS in production
+- Rotate JWT_SECRET periodically
+- Monitor failed authentication attempts
+- Review device registrations regularly
+- Check STH chain for anomalies

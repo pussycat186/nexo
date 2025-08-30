@@ -1,8 +1,32 @@
-# Nexo v2 - Security Configuration
+# Security Policy
+
+## Reporting Security Vulnerabilities
+
+If you discover a security vulnerability in Nexo, please report it responsibly.
+
+**DO NOT** open a public issue. Instead, please email: security@example.com
+
+We will acknowledge receipt within 48 hours and provide a detailed response within 7 days.
+
+## Cryptographic Overview
+
+### Authentication
+- **Ed25519 Passwordless**: Device-based authentication using Ed25519 digital signatures
+- **Challenge-Response Protocol**: Nonce-based verification to prevent replay attacks
+- **JWT Tokens**: Short-lived access tokens (1 hour expiry) with secure refresh mechanism
+
+### Message Encryption  
+- **X25519 + XChaCha20-Poly1305**: Modern AEAD encryption with perfect forward secrecy
+- **HKDF-SHA256**: Key derivation with context binding
+- **Key Rotation**: Automatic rotation every 20 messages
+
+### Transport Security
+- **WebSocket ACK/Idempotency**: UUID-based deduplication with delivery confirmation
+- **STH Chain**: Signed Tree Head for cryptographic message integrity verification
 
 ## Security Headers
 
-### Required Headers
+The application implements the following security headers:
 ```javascript
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -14,53 +38,23 @@ app.use((req, res, next) => {
 });
 ```
 
-## CORS Configuration
-
-### Production Settings
-```javascript
-const corsOptions = {
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['https://nexo.app'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-};
-```
-
 ## Rate Limiting
 
 ### API Endpoints
-```javascript
-import rateLimit from 'express-rate-limit';
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per window
-  message: 'Too many authentication attempts'
-});
-
-// Apply to auth routes
-app.use('/api/auth', authLimiter);
-
-const apiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // 100 requests per minute
-  message: 'Too many requests'
-});
-
-// Apply to all API routes
-app.use('/api', apiLimiter);
-```
+- Authentication attempts: 5 per 15 minutes
+- General API calls: 100 per minute
+- Message sending: 30 per minute per conversation
 
 ### WebSocket Connections
 - Max 5 concurrent connections per user
 - Max 100 messages per minute per connection
-- Automatic disconnect on rate limit exceeded
+- Automatic disconnect on rate limit exceeded (code 4003)
 
 ## Authentication & Authorization
 
 ### JWT Configuration
 - Algorithm: HS256
-- Access token TTL: 15 minutes
+- Access token TTL: 1 hour
 - Refresh token TTL: 7 days
 - Token rotation on refresh
 
@@ -69,7 +63,7 @@ app.use('/api', apiLimiter);
 - Challenge-response with 5-minute TTL
 - Device revocation support
 
-## Cryptography
+## Cryptography Details
 
 ### End-to-End Encryption
 - Key Exchange: X25519 ECDH
@@ -135,9 +129,9 @@ app.use('/api', apiLimiter);
 ## Security Testing
 
 ### Regular Audits
-- [ ] Monthly dependency updates
-- [ ] Quarterly penetration testing
-- [ ] Annual security review
+- Monthly dependency updates
+- Quarterly penetration testing
+- Annual security review
 
 ### Automated Checks
 - npm audit on CI/CD
