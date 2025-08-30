@@ -1,0 +1,308 @@
+# Nexo Everywhere — Single‑Agent Master Prompt (Web/PWA + Android + Desktop)
+
+> **Mission:** In this repo, produce a production‑grade messenger that runs **everywhere like Telegram** (Web/PWA today; Android desktop dev builds scaffolded; iOS packaging prepped), with **E2EE by default**, **Merkle transparency log + multi‑sig cosigning**, and **exclusive, defensible features** that businesses and individuals *want*, not “nice‑to‑have”. All work must be **safe**, **idempotent**, and **non‑destructive** to current CI.
+>
+> **Primary environment:** Replit (Node 20). Do **not** break the existing GitHub Actions pipeline. Deliver a fully usable web app **today**, and prepare Android/Desktop scaffolding for follow‑up.
+
+---
+
+## Guardrails
+
+* Keep `.github/workflows/acceptance.yml` semantics **unchanged** (startup = `node dist/index.js || npx --yes tsx server/index.ts`).
+* Work **in‑place** with the current layout (there is `server/index.ts`). Extend without breaking.
+* Prefer **SQLite** by default (file `./data/nexo.db`) unless `DATABASE_URL` is present.
+* Commit in **small atomic changes** with conventional messages. If a step fails, **revert that file** and continue, then summarize.
+* All scripts must be **POSIX‑compatible**. All TypeScript must be **strict** and **ESM** consistent.
+
+---
+
+## Outcomes (Checklist)
+
+**By the end of this run:**
+
+1. Replit **starts cleanly** with `bash scripts/start.sh`, passes `bash scripts/smoke.sh` (200 OK health, 5 samples), logs DB banner.
+2. **Backend** (Node/TS) exposes:
+
+   * `GET /api/health` (db, uptime, version)
+   * **Auth**: `POST /api/auth/register`, `POST /api/auth/login` (JWT access; refresh optional)
+   * **Audit**: `GET /api/audit/sth`, `GET /api/audit/proof?messageId=`; **STH** is signed by configurable cosigners (2‑of‑3 policy)
+   * **WS** at `/ws` with JWT auth, events: `init`, `key_exchange`, `message`, `ack`, `presence`
+   * **Bot hook**: `POST /api/bot/invoke` (token‑gated)
+3. **Database** (SQLite via `better-sqlite3`) with automatic migration on first boot: `users`, `devices`, `rooms`, `memberships`, `messages`, `merkle_nodes`, `sth`.
+4. **Crypto**: `@noble/curves` (ed25519/x25519) + `@noble/hashes/sha256`, `argon2` for password; deterministic message signing; symmetric payloads via `crypto.subtle`/Node `crypto` (XChaCha20‑Poly1305 if using libsodium‑like, or AES‑GCM fallback); well‑factored in `server/lib/crypto/*`.
+5. **Merkle transparency**: append‑only tree for message hashes; STH signed by **multiple cosigners** (env keys), expose proofs; client can verify locally.
+6. **Frontend /frontend** (Vite + React + TS + Tailwind + shadcn/ui):
+
+   * Routes: `/chat`, `/admin`, `/audit`, `/login`
+   * **Chat** realtime with E2EE (device keys, session keys, rotation), offline queue (IndexedDB)
+   * **Admin**: live Merkle log viewer, STH chain, cosigner status
+   * **Audit**: input root/proof → verify; export transcript
+   * **PWA**: `manifest.json`, `service-worker.js` with offline shell + cache strategy
+7. **Exclusive features (flag‑guarded, but ON by default):**
+
+   * **Message Attestation Card**: each message can reveal verifiable proof (Merkle path + STH sigs)
+   * **Self‑Verifying Transcript** export (`.jsonl` with per‑message signature + proof + root)
+   * **Key Health Meter** UI (score from key age, rotation cadence, last handshake, drift)
+   * **Secure Handoff** via QR (DID + one‑time code) for device transfer without seed exposure
+8. **DevOps (Replit‑first):** `scripts/start.sh`, `scripts/smoke.sh`, log rotate hint, `.replit` runs our start script; no double‑server; Dockerfile skeleton prepared (but not required for today).
+
+---
+
+## Project Structure (after)
+
+```
+server/
+  index.ts                # HTTP + WS bootstrap
+  routes/
+    auth.ts               # register/login
+    audit.ts              # sth/proof endpoints
+  ws/
+    gateway.ts            # ws handler + events
+  lib/
+    db.ts                 # better-sqlite3 connection + migrations
+    crypto/
+      keys.ts             # ed25519/x25519, device/session keys
+      aead.ts             # encrypt/decrypt payloads
+      merkle.ts           # tree ops, proof generation
+      cosign.ts           # STH struct + multi-sig verify
+    types.ts              # shared zod schemas
+frontend/
+  index.html
+  vite.config.ts
+  src/
+    main.tsx
+    app.tsx
+    routes/{chat.tsx,admin.tsx,audit.tsx,login.tsx}
+    components/{MessageBubble.tsx,AttestationCard.tsx,KeyHealth.tsx,QRHandoff.tsx}
+    lib/{api.ts, ws.ts, crypto.ts, idb.ts, auth.ts}
+  public/manifest.json
+  public/service-worker.js
+scripts/
+  start.sh
+  smoke.sh
+.replit
+replit.nix
+Dockerfile (optional)
+```
+
+---
+
+## Step 0 — Environment & Safety
+
+1. Print current git status, Node version, and working dir.
+2. Ensure Node 20; install missing CLIs if needed.
+3. Create `data/` directory (for SQLite) if absent.
+4. Ensure `.gitignore` includes `data/*.db`, `server.log`, `server.pid`, `node_modules`, `dist`.
+
+---
+
+## Step 1 — Start & Smoke Scripts (CI‑parity, single process)
+
+**Create `scripts/start.sh`:**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+pkill -f "server/index.ts|dist/index.js|node|tsx" 2>/dev/null || true
+
+export PORT="${PORT:-5000}"
+export NODE_ENV="${NODE_ENV:-production}"
+
+(npm run build || pnpm build || yarn build || true) >/dev/null 2>&1 || true
+
+rm -f server.pid server.log
+(
+  node dist/index.js \
+  || npx --yes tsx server/index.ts
+) > server.log 2>&1 &
+echo $! > server.pid
+
+ok=0
+for i in {1..60}; do
+  if curl -sf "http://localhost:${PORT}/api/health" >/dev/null; then ok=1; break; fi
+  sleep 1
+done
+
+if [ "$ok" != "1" ]; then
+  echo "[start] ❌ readiness failed; tail log:" >&2
+  tail -n 200 server.log >&2
+  exit 1
+fi
+
+if grep -Ei "Using SQLite database at .*data/nexo\.db" server.log >/dev/null; then
+  echo "[start] ✅ SQLite fallback detected"
+elif grep -Ei "Using PostgreSQL database" server.log >/dev/null; then
+  echo "[start] ✅ PostgreSQL detected"
+else
+  echo "[start] ⚠️ no DB banner detected"
+fi
+
+echo "[start] ✅ Server healthy on :${PORT} (pid $(cat server.pid))."
+```
+
+**Create `scripts/smoke.sh`:**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+export PORT="${PORT:-5000}"
+for i in 1 2 3; do curl -s "http://localhost:${PORT}/api/health" >/dev/null || true; done
+for i in 1 2 3 4 5; do
+  T=$(curl -s -w "%{http_code} %{time_total}" -o /dev/null "http://localhost:${PORT}/api/health")
+  code=$(awk '{print $1}' <<<"$T"); sec=$(awk '{print $2}' <<<"$T")
+  ms=$(awk -v t="$sec" 'BEGIN{printf "%.0f", t*1000}')
+  echo "sample $i: code=$code time=${ms}ms"
+  [ "$code" = "200" ] || { echo "❌ health not 200"; exit 1; }
+done
+```
+
+**Update `.replit`:**
+
+```ini
+run = "bash scripts/start.sh"
+hidden = ["server.log", "server.pid"]
+```
+
+**Update `replit.nix` (if needed):** ensure `nodejs_20` and `curl` present.
+**Add npm scripts:** `build`, `start`, `smoke`.
+
+---
+
+## Step 2 — Backend: DB & Migrations
+
+* Add `better-sqlite3`, `zod`, `argon2`, `jsonwebtoken`, `uuid`, `cookie`, `@noble/curves`, `@noble/hashes`.
+* Create `server/lib/db.ts`: open `./data/nexo.db`, run migrations (create tables if not exist), export typed helpers.
+* Tables (minimum):
+
+  * `users(id TEXT PK, email TEXT UNIQUE, pass_hash TEXT, created_at INTEGER)`
+  * `devices(id TEXT PK, user_id TEXT FK, pubkey TEXT, created_at INTEGER)`
+  * `rooms(id TEXT PK, kind TEXT, created_at INTEGER)`
+  * `memberships(user_id TEXT, room_id TEXT, role TEXT, PRIMARY KEY(user_id, room_id))`
+  * `messages(id TEXT PK, room_id TEXT, sender TEXT, cipher BLOB, sig TEXT, ts INTEGER, hash TEXT UNIQUE)`
+  * `merkle_nodes(id INTEGER PK AUTOINCREMENT, hash TEXT, left INTEGER, right INTEGER)`
+  * `sth(id INTEGER PK AUTOINCREMENT, root TEXT, sig1 TEXT, sig2 TEXT, sig3 TEXT, ts INTEGER)`
+* Add helper to **append message → hash → merkle append → maybe new STH**.
+
+---
+
+## Step 3 — Backend: Crypto
+
+* `server/lib/crypto/keys.ts`: device keygen (`ed25519`), session key via `x25519` + KDF → AEAD key.
+* `server/lib/crypto/aead.ts`: AEAD encrypt/decrypt (prefer XChaCha20‑Poly1305 if available; else AES‑GCM). Include AAD = headers.
+* `server/lib/crypto/merkle.ts`: binary tree with SHA‑256, deterministic layout, proof generation. Export `computeRoot()`, `appendLeaf()`, `getProof(messageHash)`.
+* `server/lib/crypto/cosign.ts`: STH struct, sign with cosigner private keys from env: `COSIGN_SK1..3`, verify 2‑of‑3.
+* Use `zod` schemas in `server/lib/types.ts` for payloads.
+
+---
+
+## Step 4 — Backend: HTTP & WS
+
+* `server/routes/auth.ts`:
+
+  * `POST /api/auth/register {email, password}` → argon2 hash → create user
+  * `POST /api/auth/login {email, password}` → JWT `{sub, uid}` (15m), set HttpOnly cookie, also return JSON
+* `server/routes/audit.ts`:
+
+  * `GET /api/audit/sth` → latest STH + cosignatures
+  * `GET /api/audit/proof?messageId=` → message hash + proof path
+* `server/ws/gateway.ts`:
+
+  * Validate JWT on connect; maintain connections per room
+  * Events: `init` (send device pubkey), `key_exchange` (x25519 pub), `message` (cipher + headers + sig), `ack`, `presence`
+  * On incoming `message`: verify sender sig, store cipher, append merkle, maybe emit new STH event `sth_update`
+* `server/index.ts`:
+
+  * Express (or current HTTP lib) + JSON; CORS dev friendly
+  * Add health route prints `{ ok:true, db:"sqlite"|"postgres", uptime, version }`
+  * Mount routes + WS upgrade handler on `/ws`
+  * Log at startup: `[DB] Using SQLite database at ./data/nexo.db` or `[DB] Using PostgreSQL database`.
+
+---
+
+## Step 5 — Frontend (Vite React TS + Tailwind + shadcn/ui + PWA)
+
+* Init Vite (React/TS). Add Tailwind + shadcn/ui tooling. Enforce strict TS.
+* Routes: `/login`, `/chat`, `/admin`, `/audit` via React Router.
+* `src/lib/crypto.ts`: wrap `@noble/curves` for ed25519/x25519; session key mgmt; AEAD via WebCrypto.
+* `src/lib/ws.ts`: JWT attach on connect; auto‑reconnect with backoff; event emitter.
+* `src/lib/idb.ts`: IndexedDB (idb‑keyval) for offline queue and device keys.
+* `src/lib/api.ts`: tiny fetch helper with base URL.
+* **Components**:
+
+  * `MessageBubble.tsx` with **AttestationCard** toggle (shows proof, root, cosigs + verify result in client)
+  * `KeyHealth.tsx` meter (score formula: fresh key, last rotation < N hours, last handshake < M mins, drift low → 100)
+  * `QRHandoff.tsx` to generate QR with DID + one‑time code (from `/api/auth/otp` if implemented), polling redeem
+* **PWA**: `public/manifest.json` (name, icons), `public/service-worker.js` (install/activate, cache shell, runtime cache with network‑first for `/api/`)
+* Basic theming, responsive, dark mode.
+
+---
+
+## Step 6 — Channels, Bots, Files (MVP)
+
+* **Rooms** of kind `dm`/`group`/`channel` with simple ACL.
+* **Bot** minimal: `/api/bot/invoke` with `BOT_TOKEN` env; bots can post to a room id.
+* **Files** MVP: small files via `/api/files/upload` (store under `data/blobs/`), generate signed URL; encrypt payload client‑side before upload.
+
+---
+
+## Step 7 — Dev Flags & Secrets
+
+* Feature flags via env (default ON):
+
+  * `NEXO_FF_ATTESTATION=1`
+  * `NEXO_FF_TRANSCRIPT=1`
+  * `NEXO_FF_KEY_HEALTH=1`
+  * `NEXO_FF_QR_HANDOFF=1`
+* Cosigners: `COSIGN_SK1..3` (generate dev keys if missing), policy `2‑of‑3`.
+* JWT: `JWT_SECRET`, `JWT_ISSUER=nexo`.
+* Bot: `BOT_TOKEN` (dev default random if unset).
+
+---
+
+## Step 8 — Docker (optional, keep simple)
+
+* Dockerfile: node:20‑alpine, copy, install, build, expose 5000, `CMD ["node","dist/index.js"]` with tsx fallback.
+* Compose for SQLite volume mount.
+
+---
+
+## Step 9 — Validation Plan
+
+1. `bash scripts/start.sh` → expect healthy + SQLite banner.
+2. `bash scripts/smoke.sh` → 5× 200 OK.
+3. Register/login → open `/chat` → send messages between two browsers; verify **AttestationCard** shows green status.
+4. Open `/admin` → view STH updates; `/audit` → paste proof from a message → verify success.
+5. Toggle offline → send queued → reconnect flush.
+6. Export **Self‑Verifying Transcript** from chat → download `.jsonl` and verify locally in browser.
+7. Use **QR Handoff** to link a second device (simulated in another browser window).
+
+---
+
+## Commit Plan (examples)
+
+* `chore(run): add start.sh & smoke.sh with CI‑equivalent boot + readiness`
+* `feat(db): add better-sqlite3 + migrations (users, messages, merkle, sth)`
+* `feat(crypto): ed25519/x25519, aead, merkle, cosign 2-of-3`
+* `feat(http): auth/audit routes + health`
+* `feat(ws): gateway with jwt auth, key exchange, message flow`
+* `feat(frontend): vite react ts + tailwind + shadcn + routes`
+* `feat(pwa): manifest + service worker`
+* `feat(ui): AttestationCard, KeyHealth, QRHandoff`
+* `feat(bot/files): minimal bot hook + encrypted file upload`
+
+---
+
+## Notes & Non‑Goals (today)
+
+* iOS TestFlight/App Store signing is **out of scope** for this run (needs Apple account). Prepare only.
+* TURN server for voice/video is **future work**; scaffold WebRTC later.
+* Keep GitHub CI green **as is**; any new CI jobs are parked behind a feature branch later.
+
+---
+
+## Final Command (Agent)
+
+1. Run `bash scripts/start.sh` and ensure health.
+2. Open the app in the Replit web preview; log results.
+3. If any step fails, revert the file, continue, and summarize at the end with specific diffs to revisit.
