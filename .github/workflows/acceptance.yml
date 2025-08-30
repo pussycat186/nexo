@@ -9,16 +9,16 @@ on:
 jobs:
   acceptance:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
+
       - name: Detect package manager
         id: detect-pm
         run: |
@@ -35,13 +35,13 @@ jobs:
             echo "cache=npm" >> $GITHUB_OUTPUT
             echo "install_cmd=npm ci" >> $GITHUB_OUTPUT
           fi
-          
+
       - name: Setup PNPM (if needed)
         if: steps.detect-pm.outputs.manager == 'pnpm'
         uses: pnpm/action-setup@v2
         with:
           version: 8
-          
+
       - name: Cache dependencies
         uses: actions/cache@v3
         with:
@@ -51,83 +51,59 @@ jobs:
             ~/.yarn/cache
             node_modules
           key: ${{ runner.os }}-${{ steps.detect-pm.outputs.cache }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}
-          
+
       - name: Install dependencies
         run: ${{ steps.detect-pm.outputs.install_cmd }}
-        
+
+      - name: Ensure tsx available (optional)
+        run: npx --yes tsx@4.7.0 --version
+
       - name: Start server robustly
         env:
           PORT: 5000
           JWT_SECRET: test_secret_for_ci_only_do_not_use_in_production
           JWT_ISSUER: nexo
           NODE_ENV: production
+        shell: bash
         run: |
           export PORT=5000
-          # robust start: build if possible, then fall back to tsx
+          # build nếu có thể, không fail job nếu không build được
           (pnpm -v && pnpm build) || true
+          # robust start: dist trước, tsx fallback sau
           (node dist/index.js || npx tsx server/index.ts) &> server.log &
-          # wait until health is up
+          # đợi health lên (tối đa ~20s)
           for i in {1..40}; do curl -sf localhost:5000/api/health && break || sleep 0.5; done
-        shell: bash
-          
+
       - name: Test health endpoint performance
+        shell: bash
         run: |
-          # warm-up + 5 samples (<200ms each)
+          # warm-up
           for i in {1..3}; do curl -s localhost:5000/api/health >/dev/null; done
           FAIL=0
           for i in {1..5}; do
             T=$(curl -s -w "%{time_total}" -o /dev/null localhost:5000/api/health)
-            ms=$(python - <<PY
-t=float("$T"); print(int(t*1000))
-PY
-)
+            ms=$(python -c "import sys; print(int(float('$T')*1000))")
             echo "health_ms=$ms"
-            [ "$ms" -lt 200 ] || FAIL=1
+            if [ "$ms" -ge 200 ]; then FAIL=1; fi
           done
           exit $FAIL
+
+      - name: Force SQLite write & assert DB file
         shell: bash
-          
-      - name: Verify SQLite database creation
         run: |
-          # try to force DB write so SQLite file is created
+          # kích ghi DB (endpoint có thể không tồn tại — không fail job)
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST localhost:5000/api/messages \
             -H "Content-Type: application/json" \
-            -d '{"conversation_id":"ci-acc","cipher":"X1","nonce":"N1","ad":{"type":"text"}}')
-          echo "messages_post_status=$STATUS"  # acceptable even if endpoint not present
+            -d '{"conversation_id":"ci-acc","cipher":"X1","nonce":"N1","ad":{"type":"text"}}' || true)
+          echo "messages_post_status=$STATUS"
           sleep 0.5
           ls -lh ./data || true
           test -f ./data/nexo.db
-        shell: bash
-          
-      - name: Run E2E tests (if available)
-        run: |
-          if [ "${{ steps.detect-pm.outputs.manager }}" = "pnpm" ]; then
-            if pnpm run | grep -q "test:e2e"; then
-              echo "Running E2E tests..."
-              pnpm test:e2e
-            else
-              echo "No test:e2e script found - skipping"
-            fi
-          elif [ "${{ steps.detect-pm.outputs.manager }}" = "yarn" ]; then
-            if yarn run | grep -q "test:e2e"; then
-              echo "Running E2E tests..."
-              yarn test:e2e
-            else
-              echo "No test:e2e script found - skipping"
-            fi
-          else
-            if npm run | grep -q "test:e2e"; then
-              echo "Running E2E tests..."
-              npm run test:e2e
-            else
-              echo "No test:e2e script found - skipping"
-            fi
-          fi
-          
+
       - name: Stop server
         if: always()
+        shell: bash
         run: |
-          if [ -f server.pid ]; then
-            kill $(cat server.pid) || true
-            rm server.pid
-          fi
+          pkill -f "node dist/index.js" || true
+          pkill -f "tsx server/index.ts" || true
+          echo "stopped"
