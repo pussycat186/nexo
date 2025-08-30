@@ -1,0 +1,115 @@
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(220, 14%, 6%);
+  --foreground: hsl(210, 10%, 98%);
+  --card: hsl(220, 13%, 9%);
+  --card-foreground: hsl(210, 10%, 98%);
+  --popover: hsl(220, 13%, 9%);
+  --popover-foreground: hsl(210, 10%, 98%);
+  --primary: hsl(217, 91%, 60%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(220, 13%, 14%);
+  --secondary-foreground: hsl(210, 10%, 98%);
+  --muted: hsl(220, 13%, 14%);
+  --muted-foreground: hsl(215, 10%, 65%);
+  --accent: hsl(142, 70%, 45%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(220, 13%, 18%);
+  --input: hsl(220, 13%, 18%);
+  --ring: hsl(217, 91%, 60%);
+  --radius: 8px;
+  --font-sans: "Inter", sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+}
+
+.dark {
+  --background: hsl(220, 14%, 6%);
+  --foreground: hsl(210, 10%, 98%);
+  --card: hsl(220, 13%, 9%);
+  --card-foreground: hsl(210, 10%, 98%);
+  --popover: hsl(220, 13%, 9%);
+  --popover-foreground: hsl(210, 10%, 98%);
+  --primary: hsl(217, 91%, 60%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(220, 13%, 14%);
+  --secondary-foreground: hsl(210, 10%, 98%);
+  --muted: hsl(220, 13%, 14%);
+  --muted-foreground: hsl(215, 10%, 65%);
+  --accent: hsl(142, 70%, 45%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(220, 13%, 18%);
+  --input: hsl(220, 13%, 18%);
+  --ring: hsl(217, 91%, 60%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer components {
+  .message-bubble {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  .conversation-item:hover {
+    background: var(--muted);
+  }
+  
+  .security-indicator {
+    animation: pulse 2s infinite;
+  }
+  
+  .encrypted-badge {
+    background: linear-gradient(135deg, var(--accent), hsl(142, 70%, 35%));
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Ensure proper scrolling */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--muted);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
