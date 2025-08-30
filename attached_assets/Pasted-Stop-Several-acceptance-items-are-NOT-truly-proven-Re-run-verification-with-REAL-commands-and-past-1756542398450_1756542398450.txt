@@ -1,0 +1,51 @@
+Stop. Several acceptance items are NOT truly proven. Re-run verification with REAL commands and paste RAW outputs (no echo/placeholder). Fix any failure then re-run until PASS.
+
+A) HEALTH <200ms + STH growth
+- Run 5x:
+  curl -s -w "\nstatus:%{http_code} total_ms:%{time_total}\n" http://localhost:5000/api/health -o /dev/null
+- Send 3 messages (real client or curl) → then:
+  curl -s http://localhost:5000/api/health | jq
+=> Show total_ms < 0.2 each (after warm-up) AND sth_count increased.
+
+B) PERSISTENCE (SQLite default, Postgres optional)
+- unset DATABASE_URL; restart; paste server log line “Using SQLite at ./data/nexo.db”
+- ls -lh ./data/nexo.db
+- sqlite3 ./data/nexo.db "PRAGMA integrity_check;"
+- set DATABASE_URL=postgres://...; restart; paste log “Using PostgreSQL…”
+- Paste first 40 lines of db-storage.ts selecting SQLite vs Postgres + list migrations.
+=> SQLite MUST be default when env unset.
+
+C) AUTH & DEVICES
+- Full Ed25519 CR flow: register → challenge → sign → verify → access + refresh.
+- Device list endpoint output.
+- Revoke a device, then call any API with that device’s token → 401; WS closes with 4401 (paste server/client logs).
+
+D) WS ACK + IDEMPOTENCY
+- Send msg_id=M1; drop network 5s; reconnect; client resends M1.
+- Paste server log “Duplicate prevented” AND DB shows only one row for msg_id M1.
+
+E) DELETE & EDIT
+- Edit <15min: 200 JSON with "edited": true; Edit >15min: 4xx "Edit window expired".
+- Delete for everyone: show tombstone stored + both clients render “Message removed”.
+- Delete for me: only local hides; DB row persists.
+
+F) CRYPTO (X25519 + HKDF + XChaCha20, rotate/20)
+- Paste code locations calling crypto_scalarmult and XChaCha20 encrypt/decrypt.
+- Dump one stored message row: print hex length of cipher > 0; confirm no plaintext substrings.
+- Send 25 messages; paste logs: “key rotated” at #20 with new key fingerprint.
+
+G) UX / SETTINGS
+- Receipts default ON; toggle works (UI/state dump).
+- TTL presets OFF by default; set TTL=5s for a message; run sweeper; show DB row removed and UI updated.
+
+H) AUDIT / STH PROOFS
+- /api/sth must return non-empty items with monotonic indices.
+- Implement real inclusion check (re-compute rolling hash or Merkle) – no stubs.
+- Paste a run: verifySTHInclusion(leaf, root, index) → true.
+
+I) TESTS / DOCS / DEPLOY
+- Run the real e2e test script (not echo) and paste PASS summary.
+- Provide links to RUNBOOK.md, SECURITY.md, CHANGELOG.md, and the git tag.
+- Provide DEPLOYED URLs (Replit Deployments) for web, API, ws, health (not localhost) + one screenshot logged-in.
+
+Do not summarize; paste the raw outputs, file sizes, and screenshots. If any step fails, fix and rerun until it passes.
