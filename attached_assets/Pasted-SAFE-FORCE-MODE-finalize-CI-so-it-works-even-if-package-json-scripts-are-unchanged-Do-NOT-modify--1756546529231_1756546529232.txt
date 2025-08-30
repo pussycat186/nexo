@@ -1,0 +1,54 @@
+SAFE FORCE MODE — finalize CI so it works even if package.json scripts are unchanged. Do NOT modify app logic or secrets.
+
+ALLOWED CHANGE (only this):
+- .github/workflows/acceptance.yml
+
+GOAL
+Make the CI start the server robustly WITHOUT relying on "pnpm start". Also force a write so SQLite file appears before asserting.
+
+A) Update .github/workflows/acceptance.yml to the following steps (you may keep cache/install detection you already wrote, but change the start/run blocks):
+
+- run: |
+    export PORT=5000
+    # robust start: build if possible, then fall back to tsx
+    (pnpm -v && pnpm build) || true
+    (node dist/index.js || npx tsx server/index.ts) &> server.log &
+    # wait until health is up
+    for i in {1..40}; do curl -sf localhost:5000/api/health && break || sleep 0.5; done
+- run: |
+    # warm-up + 5 samples (<200ms each)
+    for i in {1..3}; do curl -s localhost:5000/api/health >/dev/null; done
+    FAIL=0
+    for i in {1..5}; do
+      T=$(curl -s -w "%{time_total}" -o /dev/null localhost:5000/api/health)
+      ms=$(python - <<PY
+t=float("$T"); print(int(t*1000))
+PY
+)
+      echo "health_ms=$ms"
+      [ "$ms" -lt 200 ] || FAIL=1
+    done
+    exit $FAIL
+- run: |
+    # try to force DB write so SQLite file is created
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST localhost:5000/api/messages \
+      -H "Content-Type: application/json" \
+      -d '{"conversation_id":"ci-acc","cipher":"X1","nonce":"N1","ad":{"type":"text"}}')
+    echo "messages_post_status=$STATUS"  # acceptable even if endpoint not present
+    sleep 0.5
+    ls -lh ./data || true
+    test -f ./data/nexo.db
+  shell: bash
+
+(Keep your existing steps for install and any other checks; just ensure the start & health & SQLite checks match above.)
+
+B) Print the first 40 lines of the updated file so the user can review:
+- Show: head -40 .github/workflows/acceptance.yml
+
+C) Commit ONLY this file if validation passes:
+- git add .github/workflows/acceptance.yml
+- git status --porcelain  # must show only this path
+- git commit -m "ci: robust start (node dist || npx tsx) and ensure SQLite file creation on CI"
+- Print the exact git push commands for the user.
+
+STOP if any step fails and print TODO instead of committing.
