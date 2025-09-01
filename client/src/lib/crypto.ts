@@ -104,7 +104,7 @@ class RealCrypto implements CryptoInterface {
     const info = sodium.from_string(`nexo-session-${keyIndex}`);
     
     // Extract phase (HKDF-Extract)
-    const prk = sodium.crypto_auth_hmacsha256(sharedSecret, saltBytes);
+    const prk = sodium.crypto_auth(sharedSecret, saltBytes);
     
     // Expand phase (HKDF-Expand)
     const keyLength = 32; // 256 bits for XChaCha20-Poly1305
@@ -119,7 +119,7 @@ class RealCrypto implements CryptoInterface {
       input.set(info, t.length);
       input[t.length + info.length] = i;
       
-      t = sodium.crypto_auth_hmacsha256(input, prk);
+      t = sodium.crypto_auth(input, prk);
       const newOkm = new Uint8Array(okm.length + t.length);
       newOkm.set(okm);
       newOkm.set(t, okm.length);

@@ -5,7 +5,9 @@ import { db, statements } from '../lib/db';
 import { hash, generateMessageId } from '../lib/crypto/keys';
 import { appendLeaf } from '../lib/crypto/merkle';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+import { ENV } from "../config/env";
+
+const JWT_SECRET = ENV.JWT_SECRET;
 const JWT_ISSUER = process.env.JWT_ISSUER || 'nexo';
 
 interface WSClient {

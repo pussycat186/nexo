@@ -1,5 +1,5 @@
-import { ed25519 } from '@noble/curves/ed25519.js';
-import { sha256 } from '@noble/hashes/sha256.js';
+import { ed25519 } from '@noble/curves/ed25519';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes } from 'crypto';
 
 // STH (Signed Tree Head) structure
@@ -26,7 +26,7 @@ function getCosignerKeys(): { privateKeys: string[]; publicKeys: string[] } {
       publicKeys.push(Buffer.from(pubKey).toString('hex'));
     } else {
       // Generate dev key if not provided
-      const privKey = ed25519.utils.randomPrivateKey();
+      const privKey = ed25519.utils.randomSecretKey();
       const pubKey = ed25519.getPublicKey(privKey);
       privateKeys.push(Buffer.from(privKey).toString('hex'));
       publicKeys.push(Buffer.from(pubKey).toString('hex'));

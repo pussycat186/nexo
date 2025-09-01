@@ -56,7 +56,7 @@ export class Telemetry {
 }
 
 // Performance tracking
-class PerformanceTracker {
+export class PerformanceTracker {
   private static latencies: number[] = [];
   private static readonly MAX_SAMPLES = 1000;
 

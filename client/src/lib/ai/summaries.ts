@@ -1,4 +1,4 @@
-import { sha256 } from '@noble/hashes/sha256.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 // AI-Powered Smart Summaries (privacy-preserving, local-only)
 export class SmartSummaries {

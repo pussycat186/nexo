@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { sha256 } from '@noble/hashes/sha256.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 // Quantum-safe crypto placeholders (Kyber for KEM, Dilithium for signatures)
 // These are placeholders that will be replaced with actual implementations

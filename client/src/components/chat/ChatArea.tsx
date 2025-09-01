@@ -13,7 +13,14 @@ interface ChatAreaProps {
   onShowConversationSettings: () => void;
 }
 
-interface MessageWithAcks extends any {
+interface MessageWithAcks {
+  id?: string;
+  msg_id?: string;
+  sender_device?: string;
+  deletedForMe?: (string | null)[];
+  deleted?: boolean;
+  cipher?: string | null;
+  plaintext?: string;
   acks?: Array<{ device_id: string; type: string; timestamp: string }>;
 }
 

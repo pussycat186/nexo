@@ -27,25 +27,43 @@ A production-ready end-to-end encrypted (E2EE) messaging application with advanc
 └── data/              # SQLite database (auto-created)
 ```
 
-## Quick Start
+## Quickstart
 
-1. Install dependencies:
+[![CI](https://github.com/your-org/nexo/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/nexo/actions/workflows/ci.yml)
+
+### Local Development
+
 ```bash
-pnpm install  # or npm install
+# Install dependencies and set up environment
+pnpm i && pnpm approve-builds --yes && pnpm setup:env
+
+# Start development server
+pnpm dev
+
+# Run tests
+pnpm test && pnpm e2e
 ```
 
-2. Set up environment variables:
+Open http://localhost:5000 in your browser
+
+### Docker Usage
+
 ```bash
-cp .env.example .env
-# Edit .env with your settings
+# Build and run with Docker Compose
+docker-compose up --build
+
+# Or with Docker directly
+docker build -t nexo .
+docker run -p 5000:5000 --env-file .env nexo
 ```
 
-3. Start the development server:
-```bash
-pnpm run dev  # or npm run dev
-```
+### CI/CD
 
-4. Open http://localhost:5000 in your browser
+The project includes GitHub Actions CI that:
+- Runs type checking and unit tests
+- Executes Playwright E2E tests
+- Builds the production bundle
+- All tests must pass before merge
 
 ## Environment Variables
 

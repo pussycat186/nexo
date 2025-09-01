@@ -9,7 +9,9 @@ import { generateSigningKeypair, generateEncryptionKeypair, generateDeviceId } f
 const router = Router();
 
 // JWT configuration
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+import { ENV } from "../config/env";
+
+const JWT_SECRET = ENV.JWT_SECRET;
 const JWT_ISSUER = process.env.JWT_ISSUER || 'nexo';
 
 // Register endpoint

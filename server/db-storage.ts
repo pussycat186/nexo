@@ -119,9 +119,9 @@ export class PostgreSQLStorage implements IStorage {
     
     if (participantConvIds.length === 0) return [];
     
-    const convIds = participantConvIds.map(p => p.conversationId);
+    const convIds = participantConvIds.map((p: any) => p.conversationId);
     return await db.select().from(schema.conversations)
-      .where(sql`${schema.conversations.id} IN (${sql.raw(convIds.map(id => `'${id}'`).join(','))})`);
+      .where(sql`${schema.conversations.id} IN (${sql.raw(convIds.map((id: any) => `'${id}'`).join(','))})`);
   }
 
   async createConversation(conversation: schema.InsertConversation): Promise<schema.Conversation> {
@@ -246,7 +246,7 @@ export class PostgreSQLStorage implements IStorage {
     const result = await db.select({ userId: schema.participants.userId })
       .from(schema.participants)
       .where(eq(schema.participants.conversationId, conversationId));
-    return result.map(p => p.userId);
+    return result.map((p: any) => p.userId);
   }
 
   async isParticipant(conversationId: string, userId: string): Promise<boolean> {

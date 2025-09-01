@@ -1,6 +1,6 @@
-import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
-import { sha256 } from '@noble/hashes/sha256.js';
-import { randomBytes } from '@noble/hashes/utils.js';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { randomBytes } from '@noble/hashes/utils';
 
 // Encrypted File Handling System
 export class EncryptedFiles {

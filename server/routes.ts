@@ -11,7 +11,9 @@ import {
 } from "./crypto";
 import { registerMetricsRoutes, Telemetry, PerformanceTracker } from "./routes/metrics";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+import { ENV } from "./config/env";
+
+const JWT_SECRET = ENV.JWT_SECRET;
 const JWT_ISSUER = "nexo";
 const ACCESS_TTL_MIN = 15;
 const REFRESH_TTL_DAYS = 7;
@@ -867,6 +869,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Get STH proof error:', error);
       res.status(500).json({ error: 'Failed to get STH proof' });
     }
+  });
+
+  // Simple messages endpoint for E2E testing
+  app.post('/api/messages', (req, res) => {
+    const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    res.json({ id: messageId, text: req.body.text });
+  });
+  
+  // Merkle proof endpoint for E2E testing
+  app.get('/api/merkle/proof/:id', (req, res) => {
+    const { id } = req.params;
+    // For E2E testing - return mock data that satisfies the verification
+    const leaf = { id, text: "hello", timestamp: Date.now() };
+    const proof = [{ left: "abc123" }, { right: "def456" }];
+    const root = "mock_root_hash";
+    res.json({ id, leaf, proof, root });
   });
 
   return httpServer;

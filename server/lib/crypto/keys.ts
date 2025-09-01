@@ -1,12 +1,12 @@
-import { ed25519 } from '@noble/curves/ed25519.js';
-import { x25519 } from '@noble/curves/ed25519.js';
-import { hkdf } from '@noble/hashes/hkdf.js';
-import { sha256 } from '@noble/hashes/sha256.js';
+import { ed25519 } from '@noble/curves/ed25519';
+import { x25519 } from '@noble/curves/ed25519';
+import { hkdf } from '@noble/hashes/hkdf';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes } from 'crypto';
 
 // Generate Ed25519 keypair for signing
 export function generateSigningKeypair() {
-  const privKey = ed25519.utils.randomPrivateKey();
+  const privKey = ed25519.utils.randomSecretKey();
   const pubKey = ed25519.getPublicKey(privKey);
   return {
     privateKey: Buffer.from(privKey).toString('hex'),
@@ -16,7 +16,7 @@ export function generateSigningKeypair() {
 
 // Generate X25519 keypair for encryption
 export function generateEncryptionKeypair() {
-  const privKey = x25519.utils.randomPrivateKey();
+  const privKey = x25519.utils.randomSecretKey();
   const pubKey = x25519.getPublicKey(privKey);
   return {
     privateKey: Buffer.from(privKey).toString('hex'),

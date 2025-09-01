@@ -1,4 +1,4 @@
-import { sha256 } from '@noble/hashes/sha256.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { db, statements } from '../db';
 
 // Compute SHA-256 hash

@@ -60,7 +60,7 @@ router.get('/proof', (req, res) => {
     }
     
     // Get proof
-    const proof = getProof(hash);
+    const proof = getProof(hash!);
     if (!proof) {
       return res.status(404).json({ error: 'Proof not found' });
     }

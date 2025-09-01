@@ -1,6 +1,6 @@
-import { sha256 } from '@noble/hashes/sha256.js';
-import { randomBytes } from '@noble/hashes/utils.js';
-import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { randomBytes } from '@noble/hashes/utils';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha';
 
 // AI-Secure Features: Local-first, encrypted, privacy-preserving
 

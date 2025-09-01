@@ -1,0 +1,6 @@
+ignoredBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - argon2
+  - better-sqlite3
+  - bufferutil
+  - esbuild
