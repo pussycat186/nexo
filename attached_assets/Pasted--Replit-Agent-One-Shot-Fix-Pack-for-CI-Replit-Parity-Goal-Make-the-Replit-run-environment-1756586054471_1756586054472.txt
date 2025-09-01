@@ -1,0 +1,244 @@
+# Replit Agent — One‑Shot Fix Pack for CI↔Replit Parity
+
+> **Goal:** Make the Replit run environment behave exactly like GitHub Actions’ `acceptance` job so the app is green in both places. Eliminate double‑server (port collision), align start commands, add readiness checks, and ensure SQLite fallback when `DATABASE_URL` is unset. Keep changes minimal, idempotent, and reversible.
+
+---
+
+## ⭐ Agent Instructions (paste this whole section into Replit Agent)
+
+You are making changes **only** in this repo. Follow steps exactly, commit in small atomic chunks with clear messages, and run smoke checks after each step. If any step fails, revert that file to the previous commit and continue with the next step; report failures at the end.
+
+### Constraints
+
+* Node 20 required (as in CI). Use `npx --yes tsx` if `dist/index.js` not built.
+* Service must listen on `PORT` env var (5000 in CI).
+* SQLite fallback is default when `DATABASE_URL` is **unset**; otherwise use Postgres.
+* Provide consistent logs to `server.log`.
+* Do **not** introduce new dependencies unless necessary.
+
+### Deliverables
+
+1. A **single start script** used by Replit and compatible with CI semantics.
+2. **No double server**: pressing Replit **Run** must not start a second server if one already runs.
+3. A tiny **readiness loop** for `/api/health` (up to 60s).
+4. Clear **SQLite/PG banner** in logs.
+5. A **smoke script** to mimic CI locally on Replit.
+
+---
+
+## Files to Add / Modify
+
+### 1) Add `scripts/start.sh`
+
+Create a new executable script `scripts/start.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 0) Kill any lingering servers (idempotent)
+pkill -f "server/index.ts|dist/index.js|node|tsx" 2>/dev/null || true
+
+# 1) Environment defaults
+export PORT="${PORT:-5000}"
+export NODE_ENV="${NODE_ENV:-production}"
+
+# 2) Build if possible (no‑fail)
+(npm run build || pnpm build || yarn build || true) >/dev/null 2>&1 || true
+
+# 3) Start exactly ONE server, log to file
+rm -f server.pid server.log
+(
+  node dist/index.js \
+  || npx --yes tsx server/index.ts
+) > server.log 2>&1 &
+echo $! > server.pid
+
+# 4) Readiness check
+ok=0
+for i in {1..60}; do
+  if curl -sf "http://localhost:${PORT}/api/health" >/dev/null; then ok=1; break; fi
+  sleep 1
+done
+
+if [ "$ok" != "1" ]; then
+  echo "[start] ❌ Server failed readiness. Tail log:" >&2
+  tail -n 200 server.log >&2
+  exit 1
+fi
+
+# 5) DB banner hint
+if grep -Ei "Using SQLite database at .*data/nexo\.db" server.log >/dev/null; then
+  echo "[start] ✅ SQLite fallback detected"
+else
+  if grep -Ei "Using PostgreSQL database" server.log >/dev/null; then
+    echo "[start] ✅ PostgreSQL detected"
+  else
+    echo "[start] ⚠️  No DB banner detected; ensure the server prints a DB mode line."
+  fi
+fi
+
+echo "[start] ✅ Server healthy on :${PORT} (pid $(cat server.pid))."
+```
+
+Make it executable:
+
+```bash
+chmod +x scripts/start.sh
+```
+
+### 2) Add `scripts/smoke.sh`
+
+A local smoke test that mirrors CI checks:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PORT="${PORT:-5000}"
+
+# warmup 3 requests (ignore output)
+for i in 1 2 3; do curl -s "http://localhost:${PORT}/api/health" >/dev/null || true; done
+
+# measure 5 times
+for i in 1 2 3 4 5; do
+  T=$(curl -s -w "%{http_code} %{time_total}" -o /dev/null "http://localhost:${PORT}/api/health")
+  code=$(awk '{print $1}' <<<"$T")
+  sec=$(awk '{print $2}' <<<"$T")
+  ms=$(awk -v t="$sec" 'BEGIN{printf "%.0f", t*1000}')
+  echo "sample $i: code=$code time=${ms}ms"
+  if [ "$code" != "200" ]; then echo "❌ health not 200" && exit 1; fi
+done
+```
+
+Make it executable:
+
+```bash
+chmod +x scripts/smoke.sh
+```
+
+### 3) Update `.replit`
+
+Ensure Replit uses our start script and **doesn’t** auto‑spawn a second process:
+
+```ini
+run = "bash scripts/start.sh"
+
+hidden = ["server.log", "server.pid"]
+```
+
+If your `.replit` already has a `language` or `entrypoint`, keep them; just ensure `run` equals the line above.
+
+### 4) (Optional) Update `replit.nix` for Node 20
+
+Only if your environment isn’t already Node 20. If needed, set:
+
+```nix
+{ pkgs }: {
+  deps = [
+    pkgs.nodejs_20
+    pkgs.curl
+  ];
+}
+```
+
+### 5) Ensure the server prints a DB banner
+
+In `server/index.ts` (or where DB connects), log a single line once on startup:
+
+```ts
+const usingPg = !!process.env.DATABASE_URL;
+if (usingPg) {
+  console.log("[DB] Using PostgreSQL database (DATABASE_URL present)");
+} else {
+  console.log("[DB] Using SQLite database at ./data/nexo.db");
+}
+```
+
+### 6) Align `package.json` scripts (no behavior change, just helpers)
+
+Add these scripts if absent:
+
+```json
+{
+  "scripts": {
+    "build": "tsc -p . || true",
+    "start": "bash scripts/start.sh",
+    "smoke": "bash scripts/smoke.sh"
+  }
+}
+```
+
+---
+
+## GitHub CI Parity Check
+
+No change required to `.github/workflows/acceptance.yml`, but verify these two lines still match the agent flow:
+
+* Startup: `(node dist/index.js || npx --yes tsx server/index.ts)`
+* Healthcheck: `curl -sf http://localhost:5000/api/health`
+
+If CI ever fails readiness, print `server.log` tail as it already does.
+
+---
+
+## Validation Plan (Agent must run these)
+
+1. **Clean start:**
+
+   ```bash
+   bash scripts/start.sh
+   ```
+
+   Expect: readiness OK, banner printed, PID shown.
+
+2. **Smoke test:**
+
+   ```bash
+   npm run smoke  # or: bash scripts/smoke.sh
+   ```
+
+   Expect: 5× code=200, reasonable ms.
+
+3. **Port collision guard:** Run `bash scripts/start.sh` again; it must **replace** old server cleanly (due to `pkill`), not fail with EADDRINUSE.
+
+4. **DB mode toggle:**
+
+   * Unset DB: `unset DATABASE_URL && bash scripts/start.sh` → SQLite banner.
+   * Set DB: `export DATABASE_URL=postgres://... && bash scripts/start.sh` → PostgreSQL banner.
+
+5. **Log sanity:**
+
+   ```bash
+   tail -n 80 server.log
+   ```
+
+   Ensure no unhandled errors after readiness.
+
+---
+
+## Commit Plan (Agent)
+
+* `chore(run): add start.sh with CI‑equivalent boot + readiness`
+* `chore(test): add smoke.sh to mirror acceptance checks`
+* `chore(replit): set run= scripts/start.sh to avoid double server`
+* `chore(db): print clear DB banner on startup`
+* `docs(pkg): helper npm scripts (build/start/smoke)`
+
+---
+
+## Rollback Plan
+
+If any step regresses CI or Replit:
+
+* Revert the specific file via `git checkout -- <file>` or `git revert <commit>`.
+* Keep `acceptance.yml` intact.
+* Keep server start expression `(node dist/index.js || npx --yes tsx server/index.ts)` unchanged in CI.
+
+---
+
+## Notes for Human Owner
+
+* When you **use the Run button**, do not also start via shell manually—the new `run = bash scripts/start.sh` already handles process cleanup and readiness.
+* If Replit **Secrets** injects `DATABASE_URL`, you’ll see the PostgreSQL banner—this is expected. Remove or change the secret if you want SQLite fallback.
+* If the health route is different, update the scripts’ path accordingly.

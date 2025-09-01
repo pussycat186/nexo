@@ -1,0 +1,234 @@
+NEXO — Quantum AI Final Upgrade (Ultimate One-Shot Agent Prompt)
+Mission
+
+Upgrade NEXO to the Quantum Gold Standard in one pass:
+
+Branding unified to NEXO everywhere (no “Messenger” / “Everywhere”).
+
+VIP-first UX: premium, minimalist, smooth, accessible.
+
+Zero-trust security: E2EE, Merkle transparency, 2-of-3 cosigned STH, device handoff.
+
+AI-secure features: encrypted smart summaries (local by default), private search, sandboxed secure plugins.
+
+Everywhere: Web/PWA today; scaffold Desktop (Tauri) + Mobile (Capacitor).
+
+Safe & idempotent: keep CI green, single process on Replit, atomic commits.
+
+SAFE MODE (hard rules)
+
+Do not modify .github/workflows/acceptance.yml or the start expression (node dist/index.js || npx --yes tsx server/index.ts).
+
+Single process only on Replit: always boot via bash scripts/start.sh (kill stray node|tsx first).
+
+Atomic commits with clear messages. If any sub-step fails, revert only that file, continue, and summarize at the end.
+
+Preserve all security properties; no plaintext user content may leave the client without explicit user consent.
+
+Outcomes (must deliver)
+
+Brand: All user-facing text/meta/manifest/AppShell show NEXO only.
+
+VIP UX: AppShell (topbar = NEXO, KeyHealth mini, avatar), minimalist chat, compact AttestationCard (one-tap verify), smooth 180–220ms transitions, WCAG AA.
+
+Security: E2EE (ed25519 + x25519 + HKDF + AES-GCM/XChaCha20), Merkle proofs (RFC 8785 canonical JSON), multi-sig STH (2-of-3), QR secure device handoff.
+
+AI-Secure:
+
+Encrypted Smart Summaries (local): client-only extractive + optional tiny model; no server plaintext.
+
+Private Search: local encrypted index in IndexedDB; query/decrypt on device.
+
+Secure Plugins (Agents): sandboxed Web Worker runtime, capability-gated, outputs attested into Merkle.
+
+Optional remote AI adapters (off by default): require explicit, granular consent with redaction; never store plaintext server-side.
+
+Reliability: WS JWT auth, heartbeat ping/pong (≤30s), exponential reconnect, offline queue flush, token refresh, session key rotation.
+
+PWA & Perf: installable, app-shell cached, /api/* network-first, versioned caches, first load ≤250KB gz, code-split /admin & /audit.
+
+Observability: /metrics dashboard (privacy-first), opt-in telemetry (no content).
+
+Multi-platform scaffolds: Tauri (desktop) & Capacitor (mobile) ready (dev builds).
+
+Validation: bash scripts/start.sh & bash scripts/smoke.sh pass (5× 200 OK), health { ok, db, uptime, version }, Lighthouse ≥90 (Perf/BP/A11y/PWA).
+
+Tasks (do in this order)
+A) Branding sweep → NEXO
+
+Replace UI-level strings: Nexo Messenger|Nexo Everywhere|Everywhere (as subtitle) → NEXO.
+
+Update:
+
+<title> = NEXO
+
+manifest.json: "name":"NEXO","short_name":"NEXO","description":"Secure, minimalist E2EE messenger with verifiable transparency."
+
+SW cache key prefix nexo-*
+
+AppShell topbar label/logo → NEXO
+
+Keep docs/README untouched unless user-facing at runtime.
+
+B) Design system & Tailwind
+
+Create/update src/styles/brand.ts:
+
+export const brand = {
+  name: "NEXO",
+  colors: {
+    primary: "#2563EB", primaryHover: "#1E40AF",
+    bg: { light: "#FAFAFA", dark: "#0B0F1A" },
+    card: { light: "#FFFFFF", dark: "rgba(255,255,255,0.04)" },
+    text: { light: "#111827", dark: "#E5E7EB" },
+    muted: "#9CA3AF", success: "#22C55E", warn: "#F59E0B", danger: "#EF4444"
+  },
+  radii: { xl: "16px", xxl: "24px" },
+  shadow: { card: "0 10px 30px rgba(0,0,0,0.15)", button: "0 2px 10px rgba(0,0,0,0.10)" }
+};
+
+
+Tailwind extends tokens; font Inter; dark/light via CSS variables.
+
+C) AppShell & core UX
+
+AppShell: topbar (logo + NEXO, room title center, right cluster = KeyHealth mini + avatar menu), collapsible sidebar (rooms/channels, search, “New Chat”).
+
+Motion with framer-motion (180–220ms, easing [.2,.8,.2,1]); honor prefers-reduced-motion.
+
+Chat bubbles compact; timestamp on hover; statuses: ✓ / ✓✓ / ✓✓✔.
+
+Composer: drag-drop files; “encrypted” badge.
+
+AttestationCard Compact: single line Verified • 2-of-3 • root: abcd…1234 → expand details; Copy proof button.
+
+D) Security hardening
+
+ESM imports: Noble modules must use .js suffix (@noble/curves/ed25519.js, @noble/hashes/sha256.js).
+
+DB banner: log exactly once on startup:
+
+[DB] Using PostgreSQL database OR [DB] Using SQLite database at ./data/nexo.db
+
+Health /api/health returns { ok, db, uptime, version }.
+
+JWT: require JWT_SECRET; short-lived access, refresh path; never log secrets.
+
+WS: JWT on connect; ping/pong ≤30s; backoff; refresh; offline queue flush; session key rotation.
+
+Merkle: canonicalize JSON (RFC 8785) before hashing; deterministic leaf/proof order; client verify == server root.
+
+QR Secure Handoff: DID + one-time code; link device without exposing seed; record device attestation event in Merkle.
+
+E) AI-Secure features
+
+Encrypted Smart Summaries (local-first)
+
+Implement client-only extractive summarization (e.g., TextRank + MMR) on decrypted messages; never send plaintext out.
+
+Store summaries encrypted under a Summary Key (separate from chat key); rotate periodically.
+
+UI: “Summarize conversation” → shows digest with links; Export encrypted digest option.
+
+Private Search
+
+Build local encrypted index (tokenized/hashed terms or embeddings) in IndexedDB.
+
+Query flow decrypts index on device, ranks results, reveals matching messages locally.
+
+Separate Search Key; wipe on logout/device unlink.
+
+Secure Plugins (Agents)
+
+Sandboxed Web Worker runtime; plugin manifest (name, permissions).
+
+Default no network; capability-gated: fs, http(fetch via proxy), crypto, ui.
+
+Plugin I/O runs on ciphertext; outputs include attested metadata and are appended to Merkle with provenance.
+
+UI: Plugin Panel with permission prompts; history of plugin actions (verifiable).
+
+Optional remote AI adapters (off by default):
+
+Provide adapters for providers (names redacted in code).
+
+Require explicit per-action consent & redaction review; never store plaintext on server; log only counts/latency (opt-in).
+
+F) Files (encrypted)
+
+Client-side encrypt file chunks; upload; manifest includes hashes; decrypt on download.
+
+Enforce size caps for MVP; show progress & verify after upload.
+
+G) PWA & performance
+
+App-shell cached; /api/* network-first; versioned caches; safe SW updates with postMessage skipWaiting prompt.
+
+Code-split pages /admin & /audit.
+
+First load ≤250KB gz; prefetch on idle; disable sourcemaps in production.
+
+H) Observability (privacy-first)
+
+/metrics dashboard (no content):
+
+Server uptime, p95 latency.
+
+WS reconnect count, dropped frames.
+
+Verified vs failed message proof ratio.
+
+PWA cache hit/miss.
+
+Telemetry is opt-in; one toggle; explain clearly; can purge data.
+
+Validation (must pass)
+bash scripts/start.sh
+bash scripts/smoke.sh   # expect 5× 200 OK
+
+
+Title/AppShell/manifest show NEXO only.
+
+/api/health returns { ok, db, uptime, version }; DB banner printed once.
+
+Chat across two browsers: realtime; ✓✓✔ verifies; AttestationCard expands details; Copy proof works.
+
+/admin: STH timeline increases as messages arrive; cosigner status visible.
+
+/audit: proof & transcript verification PASS.
+
+AI-secure:
+
+Local Summaries work offline; export encrypted digest.
+
+Private Search returns accurate results; all on device.
+
+Plugin sandbox runs; actions are permissioned and logged with attestation.
+
+PWA installable; offline works; caches versioned.
+
+Lighthouse ≥90 (Performance, Best Practices, Accessibility, PWA).
+
+Tauri & Capacitor scaffolds build dev artifacts successfully.
+
+Suggested commit messages
+
+feat(brand): unify all runtime branding to "NEXO" (title, manifest, AppShell, SW)
+
+feat(ui): VIP AppShell + compact chat/AttestationCard + KeyHealth mini
+
+feat(ai-secure): local encrypted summaries + private search + plugin sandbox
+
+feat(audit): STH timeline + proof/transcript verification UX
+
+chore(crypto): enforce noble ESM .js imports
+
+chore(server): single DB banner + richer /api/health
+
+chore(ws): heartbeat/backoff/refresh + offline queue flush
+
+chore(pwa): versioned caches + safe SW updates
+
+perf(a11y): code-split + budgets + WCAG AA compliance
+
+chore(packaging): scaffold Tauri (desktop) & Capacitor (mobile)

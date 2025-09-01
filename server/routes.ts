@@ -9,6 +9,7 @@ import {
   generateSecureToken,
   STHChain
 } from "./crypto";
+import { registerMetricsRoutes, Telemetry, PerformanceTracker } from "./routes/metrics";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 const JWT_ISSUER = "nexo";
@@ -87,6 +88,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Initialize cached stats for health endpoint
   initializeStats();
+  
+  // Register metrics routes
+  registerMetricsRoutes(app);
 
   // WebSocket server with ACK support
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
@@ -108,6 +112,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const deviceId = payload.sub;
+    let isAlive = true;
+
+    // Heartbeat mechanism
+    const heartbeat = setInterval(() => {
+      if (!isAlive) {
+        ws.terminate();
+        clearInterval(heartbeat);
+        return;
+      }
+      isAlive = false;
+      ws.ping();
+    }, 30000); // Ping every 30 seconds
+
+    ws.on('pong', () => {
+      isAlive = true;
+    });
 
     // Add to conversation room with device tracking
     if (!wsConnections.has(convId)) {
@@ -129,6 +149,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     ws.on('message', async (data) => {
+      // Handle ping messages
+      if (data.toString() === 'ping') {
+        ws.send('pong');
+        return;
+      }
+      
       try {
         const envelope = JSON.parse(data.toString());
         
@@ -254,6 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     ws.on('close', () => {
+      clearInterval(heartbeat);
       const connections = wsConnections.get(convId);
       if (connections) {
         connections.delete(deviceId);
@@ -261,6 +288,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           wsConnections.delete(convId);
         }
       }
+    });
+
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      clearInterval(heartbeat);
     });
   });
 
@@ -784,7 +816,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Use cached stats to avoid DB roundtrip
     res.json({
+      ok: true,
       status: 'healthy',
+      db: process.env.DATABASE_URL ? 'postgresql' : 'memory',
+      uptime: process.uptime(),
+      version: '1.0.0',
       timestamp: Math.floor(Date.now() / 1000),
       users_count: cachedStats.users_count,
       sth_count: cachedStats.sth_count,

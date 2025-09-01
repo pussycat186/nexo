@@ -67,4 +67,4 @@ temp/
 .tmp/
 
 # Production
-*.production
+*.productionattached_assets/
