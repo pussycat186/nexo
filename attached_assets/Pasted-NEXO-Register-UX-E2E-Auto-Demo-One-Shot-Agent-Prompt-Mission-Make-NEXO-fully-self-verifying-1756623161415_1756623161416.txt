@@ -1,0 +1,198 @@
+NEXO — Register + UX E2E & Auto-Demo (One-Shot Agent Prompt)
+Mission
+
+Make NEXO fully self-verifying from first run:
+
+Fix registration: local device keypair, send device.pubkey to /api/auth/register, optional dev fallback via env flag.
+
+Automated UI testing: Playwright E2E for all critical flows.
+
+Auto-Demo: one command brings up a guided demo (seed users, scripted chat, proof checks, offline queue, AI-secure features).
+
+Keep CI spotless; single process on Replit; idempotent changes.
+
+SAFE MODE (must follow)
+
+Do not modify .github/workflows/acceptance.yml or start expression (node dist/index.js || npx --yes tsx server/index.ts).
+
+Ensure single server: always boot with bash scripts/start.sh; kill stray node|tsx first.
+
+Atomic commits with clear messages. If a sub-step fails, revert that file and continue; summarize at the end.
+
+A) Registration flow (fix & harden)
+
+Client
+
+Create client/src/lib/crypto/device.ts:
+
+generateDeviceKeys() using @noble/curves/ed25519.js, returns { pubkeyHex, secretRaw }.
+
+Store secret encrypted in IndexedDB (idb) under nexo:device:ed25519 (derive key from password via PBKDF2/HKDF). Never send secret to server.
+
+getOrCreateDevice() loads or creates keys.
+
+In LoginPage (register submit):
+
+await getOrCreateDevice() → POST /api/auth/register with:
+
+{
+  "email": "...",
+  "password": "...",
+  "device": { "name": "web", "pubkey": "<64-hex>" }
+}
+
+
+Disable button during keygen; show progress. If server replies { ok:false, error, details }, show toast with details.
+
+Server
+
+Register schema (Zod) in server/routes.ts or auth controller:
+
+const RegisterSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  device: z.object({
+    id: z.string().uuid().optional(),
+    name: z.string().min(1).default('web'),
+    pubkey: z.string().regex(/^[0-9a-f]{64}$/i)
+  }).optional()
+});
+
+
+Behavior:
+
+If process.env.NEXO_DEV_ALLOW_PASSWORD_ONLY === '1' and device missing → allow, create device later as pending_key.
+
+Else require device.pubkey, respond with { ok:false, error:"missing_fields", details:["device.pubkey required"] } when absent.
+
+On success: create user (argon2), create device, return { ok:true, user, device, token }.
+
+Keep Noble imports ESM .js; keep DB banner printed once on startup.
+
+B) Automated UI tests (Playwright E2E)
+
+Add Playwright dev dependency and config.
+
+Create tests under e2e/ (use two browser contexts for two users):
+
+auth.spec.ts
+
+Register (with device pubkey)
+
+Login, redirect to /chat
+
+chat.spec.ts
+
+Two users DM; expect ✓ sent → ✓✓ delivered → ✓✓✔ verified
+
+Open AttestationCard → verify “2-of-3” and root short
+
+audit.spec.ts
+
+Open /admin → STH increases after messages
+
+/audit → paste proof / upload transcript → PASS
+
+offline.spec.ts
+
+Toggle offline → send 2 msgs (queued) → online → auto-flush
+
+pwa.spec.ts
+
+Check manifest.json name/short_name = “NEXO”
+
+Confirm SW installed and versioned caches
+
+ai-secure.spec.ts
+
+Run local Smart Summary over a short conversation
+
+Run Private Search (IndexedDB index) offline
+
+Execute sample Secure Plugin in sandbox; verify provenance log entry in /admin
+
+Add npm scripts:
+
+{
+  "scripts": {
+    "e2e:install": "npx playwright install --with-deps",
+    "e2e": "playwright test --reporter=list",
+    "e2e:ui": "playwright test --ui"
+  }
+}
+
+C) Auto-Demo (hands-free)
+
+Add scripts/demo.mjs (Node ESM) that:
+
+Seeds two demo users via API:
+
+demo.alice@nexo.test, demo.bob@nexo.test with generated device pubkeys.
+
+Sends scripted messages Alice→Bob→Alice through WS or REST send endpoint.
+
+Exports a transcript for the thread, then calls /api/audit/sth and verifies the root + proof.
+
+Triggers AI-secure flows:
+
+Generate local encrypted summary for the thread.
+
+Build private search index; query a keyword.
+
+Simulates offline queue (temporary network toggle or server pause) → re-send on reconnect.
+
+Logs a compact checklist with ✅ / ❌ for each step.
+
+Create a Demo Mode route /demo:
+
+One button: Run Demo → calls POST /api/demo/run which internally invokes safe demo steps (no secrets, no destructive ops).
+
+UI shows a progress timeline: Register → Keys → Messages → Attestation → Summary → Search → Offline flush → Done.
+
+Add npm scripts:
+
+{
+  "scripts": {
+    "demo": "node --experimental-fetch scripts/demo.mjs"
+  }
+}
+
+D) Accessibility & micro-polish checks
+
+Add a lightweight axe-core pass inside Playwright for key screens (/login, /chat, /admin, /audit).
+
+Ensure focus states are visible, tab order correct, and controls ≥44px.
+
+E) Acceptance (must pass)
+bash scripts/start.sh
+bash scripts/smoke.sh        # expect 5× 200 OK
+npm run e2e:install
+npm run e2e                  # all specs pass
+npm run demo                 # auto-demo checklist prints all ✅
+
+
+UI “Create Account” works first try (no manual curl).
+
+Title/AppShell/manifest show NEXO only.
+
+AttestationCard: “Verified • 2-of-3 • root: …”.
+
+/admin STH increases; /audit transcript verify PASS.
+
+Offline queue flushes; PWA installable; tests green.
+
+Commit messages (suggested)
+
+feat(auth): client device keygen + send pubkey on register
+
+feat(auth): dev fallback (NEXO_DEV_ALLOW_PASSWORD_ONLY)
+
+test(e2e): Playwright flows for auth/chat/audit/pwa/offline/ai-secure
+
+feat(demo): scripted auto-demo + /demo route
+
+chore(crypto): noble ESM .js imports
+
+chore(server): structured errors + single DB banner
+
+chore(a11y): axe checks + focus/touch improvements
