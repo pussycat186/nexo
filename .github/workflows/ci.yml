@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - fix/ci-e2e-security
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout code
+      - uses: actions/checkout@v4
+
+      # 2. Setup pnpm
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      # 3. Setup Node.js
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      # 4. Install dependencies
+      - run: pnpm install
+
+      # 5. Auto-approve native builds (pnpm v10)
+      - run: pnpm approve-builds --interactive=false --ignore-existing
+
+      # 6. Type check
+      - run: pnpm run typecheck
+
+      # 7. Install Playwright browsers
+      - run: npx playwright install --with-deps
+
+      # 8. Run unit tests
+      - run: pnpm run test -- --run
+
+      # 9. Run E2E tests
+      - run: pnpm run e2e
+
+      # 10. Build production
+      - run: pnpm run build
